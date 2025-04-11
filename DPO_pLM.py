@@ -149,6 +149,39 @@ def prepare_pairs(hf_dataset):
 # ---------------------------
 # Loss Functions
 # ---------------------------
+def batch_log_likelihood(sequences, device, model, tokenizer):
+
+    cse_f = torch.nn.CrossEntropyLoss(reduction='none')
+
+    inputs = tokenizer(
+        sequences,
+        return_tensor='pt',
+        add_special_tokens=False,
+        padding=True,
+        padding_side='right').to(device)
+
+    input_ids = inputs["inputs_ids"]
+    attention_mask = inputs["attention_mask"]
+
+    outputs = model(input_ids)
+    shift_logits = outputs.logits[..., :-1, :].contiguous()
+    shift_labels = input_ids[..., 1:].contiguous()
+    # attention mask should match labels
+    shift_mask = attention_mask[..., 1:].contiguous()
+
+    log_likelihood_per_token = cse_f(
+        shift_logits.view(-1, shift_logits.size(-1)),
+        shift_labels.view(-1)
+    ).view(shift_labels.shape)
+
+    # zero out log_p for pad tokens
+    log_likelihood_per_token = log_likelihood_per_token * shift_mask
+
+    return log_likelihood_per_token
+
+
+
+
 def log_likelihood(sequences, device, model, tokenizer):
     
     all_log_likelihood = []  # List to store loss for each sequence
@@ -156,7 +189,7 @@ def log_likelihood(sequences, device, model, tokenizer):
     for sequence in sequences:
         inputs = tokenizer.encode(sequence, return_tensors='pt').to(device)
         outputs = model(inputs, labels=inputs)
-        neg_log_likelihood, logits = outputs[:2]                        # The HF loss output is the negative log-likelihood averaged over the number of tokens.
+        neg_log_likelihood, logits = outputs[:2]  # The HF loss output is the negative log-likelihood averaged over the number of tokens.
         all_log_likelihood.append(-neg_log_likelihood.unsqueeze(0)) # Convert negative log-likelihood to likelihood by multiplying by -1.
         
     all_log_likelihood = torch.cat(all_log_likelihood)
@@ -186,6 +219,7 @@ def dpo_paired_loss(batch, model, ref_model, tokenizer, device, beta=0.1):
 
     return  torch.mean(loss)
     
+
 def dpo_weighted_loss(pi_log_likelihood, ref_log_likelihood, weights, beta=0.1):
     """
     Calculates DPO weighted loss. 
