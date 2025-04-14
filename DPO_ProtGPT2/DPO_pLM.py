@@ -184,11 +184,18 @@ def batch_log_likelihood(sequences, device, model, tokenizer):
     input_ids = inputs["input_ids"]
     attention_mask = inputs["attention_mask"]
 
-    outputs = model(input_ids, attention_mask=attention_mask)
+    position_ids = attention_mask.cumsum(dim=-1) - 1
+    position_ids.masked_fill_(attention_mask == 0, 0)
+
+    outputs = model(input_ids, attention_mask=attention_mask)#, position_ids=position_ids)
+
     shift_logits = outputs.logits[..., :-1, :].contiguous()
     shift_labels = input_ids[..., 1:].contiguous()
     # attention mask should match labels
     shift_mask = attention_mask[..., 1:].contiguous()
+
+    #shift_logits = shift_logits * shift_mask.unsqueeze(-1) 
+    #shift_labels =  shift_labels * shift_mask 
 
     log_likelihood_per_token = cse_f(
         shift_logits.view(-1, shift_logits.size(-1)),
@@ -197,12 +204,12 @@ def batch_log_likelihood(sequences, device, model, tokenizer):
 
 
     # zero out log_p for pad tokens
-    #log_likelihood_per_token = log_likelihood_per_token * shift_mask
+    log_likelihood_per_token = log_likelihood_per_token * shift_mask
 
-    log_likelihood_per_seq = (
-    (log_likelihood_per_token * shift_mask).sum(dim=1)
-    / shift_mask.sum(dim=1)
-)
+    #log_likelihood_per_seq = (
+    #(log_likelihood_per_token * shift_mask).sum(dim=1)
+    #/ shift_mask.sum(dim=1)
+    #)
 
 
     return log_likelihood_per_token
