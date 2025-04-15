@@ -170,6 +170,26 @@ def prepare_pairs(hf_dataset):
 # ---------------------------
 # Loss Functions
 # ---------------------------
+def new_batch_log_likelihood(input_texts, device, model, tokenizer):
+
+    inputs = tokenizer(input_texts, padding=True, padding_side='right', return_tensors="pt", add_special_tokens=False).to(device)
+    input_ids = inputs.input_ids
+    attention_mask = inputs.attention_mask
+    outputs = model(input_ids)
+    probs = torch.log_softmax(outputs.logits, dim=-1)
+
+    # collect the probability of the generated token -- probability at index 0 corresponds to the token at index 1
+    probs = probs[:, :-1, :]
+    input_ids = input_ids[:, 1:]
+    gen_probs = torch.gather(probs, 2, input_ids[:, :, None]).squeeze(-1)
+
+    shift_mask = attention_mask[..., 1:]#.contiguous()
+    # Use attention_mask to normalise to exclude pad_tokens
+    gen_probs = (gen_probs * shift_mask) / shift_mask.sum(dim=1, keepdim=True)
+
+    # sum since already normalised by seq len
+    return gen_probs.sum(dim=1)
+
 def batch_log_likelihood(sequences, device, model, tokenizer):
 
     cse_f = torch.nn.CrossEntropyLoss(reduction='none', ignore_index=tokenizer.pad_token_id)
@@ -179,7 +199,7 @@ def batch_log_likelihood(sequences, device, model, tokenizer):
         return_tensors='pt',
         add_special_tokens=False,
         padding=True,
-        padding_side='left').to(device)
+        padding_side='right').to(device)
 
     input_ids = inputs["input_ids"]
     attention_mask = inputs["attention_mask"]
@@ -187,7 +207,7 @@ def batch_log_likelihood(sequences, device, model, tokenizer):
     position_ids = attention_mask.cumsum(dim=-1) - 1
     position_ids.masked_fill_(attention_mask == 0, 0)
 
-    outputs = model(input_ids, attention_mask=attention_mask)#, position_ids=position_ids)
+    outputs = model(input_ids, attention_mask=attention_mask, position_ids=position_ids)
 
     shift_logits = outputs.logits[..., :-1, :].contiguous()
     shift_labels = input_ids[..., 1:].contiguous()
@@ -204,15 +224,12 @@ def batch_log_likelihood(sequences, device, model, tokenizer):
 
 
     # zero out log_p for pad tokens
-    log_likelihood_per_token = log_likelihood_per_token * shift_mask
+    #log_likelihood_per_token = (log_likelihood_per_token * shift_mask) / shift_mask.sum(dim=1, keepdim=True)
+    log_likelihood_per_token = log_likelihood_per_token / shift_mask.sum(dim=1, keepdim=True)
 
-    #log_likelihood_per_seq = (
-    #(log_likelihood_per_token * shift_mask).sum(dim=1)
-    #/ shift_mask.sum(dim=1)
-    #)
-
-
-    return log_likelihood_per_token
+    # Compute log likelihood for entire sequences
+    # NOTE: Need to exclude pad_tokens from sum
+    return log_likelihood_per_token.sum(dim=-1)
 
 def log_likelihood(sequences, device, model, tokenizer):
     
