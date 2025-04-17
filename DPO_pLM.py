@@ -149,35 +149,24 @@ def prepare_pairs(hf_dataset):
 # ---------------------------
 # Loss Functions
 # ---------------------------
-def batch_log_likelihood(sequences, device, model, tokenizer):
+def per_token_log_likelihood(input_texts, device, model, tokenizer):
 
-    cse_f = torch.nn.CrossEntropyLoss(reduction='none')
-
-    inputs = tokenizer(
-        sequences,
-        return_tensor='pt',
-        add_special_tokens=False,
-        padding=True,
-        padding_side='right').to(device)
-
-    input_ids = inputs["inputs_ids"]
-    attention_mask = inputs["attention_mask"]
-
+    inputs = tokenizer(input_texts, padding=True, padding_side='right', return_tensors="pt", add_special_tokens=False).to(device)
+    input_ids = inputs.input_ids
+    attention_mask = inputs.attention_mask
     outputs = model(input_ids)
-    shift_logits = outputs.logits[..., :-1, :].contiguous()
-    shift_labels = input_ids[..., 1:].contiguous()
-    # attention mask should match labels
-    shift_mask = attention_mask[..., 1:].contiguous()
+    probs = torch.log_softmax(outputs.logits, dim=-1)
 
-    log_likelihood_per_token = cse_f(
-        shift_logits.view(-1, shift_logits.size(-1)),
-        shift_labels.view(-1)
-    ).view(shift_labels.shape)
+    # collect the probability of the generated token -- probability at index 0 corresponds to the token at index 1
+    probs = probs[:, :-1, :]
+    input_ids = input_ids[:, 1:]
+    gen_probs = torch.gather(probs, 2, input_ids[:, :, None]).squeeze(-1)
 
-    # zero out log_p for pad tokens
-    log_likelihood_per_token = log_likelihood_per_token * shift_mask
+    shift_mask = attention_mask[..., 1:]#.contiguous()
+    # Use attention_mask to normalise to exclude pad_tokens
+    gen_probs = (gen_probs * shift_mask) / shift_mask.sum(dim=1, keepdim=True)
 
-    return log_likelihood_per_token
+    return gen_probs
 
 
 
