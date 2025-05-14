@@ -149,6 +149,28 @@ def prepare_pairs(hf_dataset):
 # ---------------------------
 # Loss Functions
 # ---------------------------
+def per_token_log_likelihood(input_texts, device, model, tokenizer):
+
+    inputs = tokenizer(input_texts, padding=True, padding_side='right', return_tensors="pt", add_special_tokens=False).to(device)
+    input_ids = inputs.input_ids
+    attention_mask = inputs.attention_mask
+    outputs = model(input_ids)
+    probs = torch.log_softmax(outputs.logits, dim=-1)
+
+    # collect the probability of the generated token -- probability at index 0 corresponds to the token at index 1
+    probs = probs[:, :-1, :]
+    input_ids = input_ids[:, 1:]
+    gen_probs = torch.gather(probs, 2, input_ids[:, :, None]).squeeze(-1)
+
+    shift_mask = attention_mask[..., 1:]#.contiguous()
+    # Use attention_mask to normalise to exclude pad_tokens
+    gen_probs = (gen_probs * shift_mask) / shift_mask.sum(dim=1, keepdim=True)
+
+    return gen_probs
+
+
+
+
 def log_likelihood(sequences, device, model, tokenizer):
     
     all_log_likelihood = []  # List to store loss for each sequence
@@ -156,7 +178,7 @@ def log_likelihood(sequences, device, model, tokenizer):
     for sequence in sequences:
         inputs = tokenizer.encode(sequence, return_tensors='pt').to(device)
         outputs = model(inputs, labels=inputs)
-        neg_log_likelihood, logits = outputs[:2]                        # The HF loss output is the negative log-likelihood averaged over the number of tokens.
+        neg_log_likelihood, logits = outputs[:2]  # The HF loss output is the negative log-likelihood averaged over the number of tokens.
         all_log_likelihood.append(-neg_log_likelihood.unsqueeze(0)) # Convert negative log-likelihood to likelihood by multiplying by -1.
         
     all_log_likelihood = torch.cat(all_log_likelihood)
@@ -186,6 +208,7 @@ def dpo_paired_loss(batch, model, ref_model, tokenizer, device, beta=0.1):
 
     return  torch.mean(loss)
     
+
 def dpo_weighted_loss(pi_log_likelihood, ref_log_likelihood, weights, beta=0.1):
     """
     Calculates DPO weighted loss. 

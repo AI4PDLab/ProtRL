@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from datasets import Dataset, load_from_disk, DatasetDict
 from tqdm import tqdm
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import subprocess
 import json
 import tempfile
@@ -24,11 +24,11 @@ from glob import glob
 import csv
 from collections import defaultdict
 
-from functions import *
-
-import pdbfixer
-from pdbfixer import PDBFixer
-from openmm.app import PDBFile
+#from functions import *
+#
+#import pdbfixer
+#from pdbfixer import PDBFixer
+#from openmm.app import PDBFile
 import io
 
 
@@ -170,12 +170,32 @@ def prepare_pairs(hf_dataset):
 # ---------------------------
 # Loss Functions
 # ---------------------------
+def per_token_log_likelihood(input_texts, device, model, tokenizer):
+
+    inputs = tokenizer(input_texts, padding=True, padding_side='right', return_tensors="pt", add_special_tokens=False).to(device)
+    input_ids = inputs.input_ids
+    attention_mask = inputs.attention_mask
+    outputs = model(input_ids)
+    probs = torch.log_softmax(outputs.logits, dim=-1)
+
+    # collect the probability of the generated token -- probability at index 0 corresponds to the token at index 1
+    probs = probs[:, :-1, :]
+    input_ids = input_ids[:, 1:]
+    gen_probs = torch.gather(probs, 2, input_ids[:, :, None]).squeeze(-1)
+
+    shift_mask = attention_mask[..., 1:]#.contiguous()
+    # Use attention_mask to normalise to exclude pad_tokens
+    gen_probs = (gen_probs * shift_mask) / shift_mask.sum(dim=1, keepdim=True)
+
+    return gen_probs
+
 def log_likelihood(sequences, device, model, tokenizer):
     
     all_log_likelihood = []  # List to store loss for each sequence
 
     for sequence in sequences:
         inputs = tokenizer.encode(sequence, return_tensors='pt').to(device)
+        #inputs = tokenizer(sequence, return_tensors='pt').input_ids.to(device)
         outputs = model(inputs, labels=inputs)
         neg_log_likelihood, logits = outputs[:2]                        # The HF loss output is the negative log-likelihood averaged over the number of tokens.
         all_log_likelihood.append(-neg_log_likelihood.unsqueeze(0)) # Convert negative log-likelihood to likelihood by multiplying by -1.
