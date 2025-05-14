@@ -81,7 +81,7 @@ Please take a look at the documentation for more details on how to configure and
 Feel free to contribute or raise issues if you encounter any problems! We are working to make it more accessible and detailed
 ## Work in Progress
 
-We are currently working on a more user-friendly version. Additionaly we are working on a LoRA for more computing efficency and a revised form of the ranked and paired form. Stay tuned!
+We are currently working on a more user-friendly version (HF implementation). Additionaly we are working on a LoRA for more computing efficency and a revised form of the ranked and paired form. Stay tuned!
 ## References
 
 - ESM1v: "Language models enable zero-shot prediction of the effects of mutations on protein function" Joshua Meier, Roshan Rao, Robert Verkuil, Jason Liu, Tom Sercu, Alexander Rives; doi: https://doi.org/10.1101/2021.07.09.450648. Computed using https://github.com/seanrjohnson/protein_gibbs_sampler/
