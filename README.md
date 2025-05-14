@@ -47,7 +47,8 @@ First of all, you will need to set up ZymCTRL or the pLM of your choice. In our 
 
 With this simple task, we observe that the three modes achieve the desired goal within just a few iterations. While the paired and ranked modes reach the objectives more quickly, they are more prone to catastrophic forgetting compared to the weighted mode. The weighted mode proves to be more stable, particularly in low-data scenarios. It is likely that, with a more complex scoring function and additional data, the ranked and paired algorithms could demonstrate improved performance and behavior.
 
-<img src = "https://github.com/user-attachments/assets/68da1180-198c-45b3-8a76-ad7938a69905"  width="600">
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/9f316f17-5c7f-4781-b837-4ef3877fcc29" />
+
 
 To reproduce the experiments of our paper, you can find all the scripts in the `Experiments` folder. Given the size and computational needs of pLMs, each one of the experiments were executed in one H100 GPU, with differing times of execution. All the parameters and external data used in the experiments can be found in this repo. The `.sh` scripts can be executed from the same folder to conduct each experiment, they have been built to work on a SLURM based cluster, given the need of GPU-intensive computing. To reproduce the results run: 
 
