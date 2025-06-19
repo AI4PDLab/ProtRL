@@ -248,9 +248,9 @@ def dpo_weighted_loss(pi_log_likelihood, ref_log_likelihood, weights, beta=0.1):
     return loss
 
 
-def dpo_ranked_loss(pi_log_likelihood, ref_log_likelihood, weights, beta=0.1):
+def dpo_ranked_loss(pi_log_likelihood, pi_ref_loglikelihood, weights, beta=0.1):
     """
-    Calculates the Dynamic Policy Optimization (DPO) ranked loss.
+    Calculates the Directed Policy Optimization (DPO) ranked loss.
     In this case the ranking is on the batch dimension.
     """
     # Ensure weights have at least one dimension
@@ -259,20 +259,19 @@ def dpo_ranked_loss(pi_log_likelihood, ref_log_likelihood, weights, beta=0.1):
     
     sorted_indices = torch.argsort(weights, descending=True)
     pi_log_likelihood = pi_log_likelihood[sorted_indices]
-    ref_log_likelihood = ref_log_likelihood[sorted_indices] if ref_log_likelihood is not None else None
+    pi_ref_loglikelihood = pi_ref_loglikelihood[sorted_indices] if not pi_ref_loglikelihood == pi_log_likelihood else None
     weights = weights[sorted_indices]
     print(f"Sorted weights: {weights}")
 
-    if ref_log_likelihood is not None:
-        pi_ratio = beta * (pi_log_likelihood - ref_log_likelihood)
-    else:
+    if pi_ref_loglikelihood is None:
         pi_ratio = beta * pi_log_likelihood
-
-    uniform_weights = torch.ones_like(pi_ratio)
-    print(f"pi ratios: {pi_ratio}")
-
+    else:
+        pi_ratio = beta * (pi_log_likelihood - pi_ref_loglikelihood)
     
-    loss = F.mse_loss(pi_ratio, uniform_weights)
+    uniform_weights = torch.arange(pi_ratio.size(0) -1 , -1, -1, device=advantages.device, dtype=advantages.dtype)        
+    uniform_weights = torch.softmax(uniform_weights, dim=0)
+    
+    loss = F.cross_entropy(pi_ratio, uniform_weights)
     return loss
 
 
