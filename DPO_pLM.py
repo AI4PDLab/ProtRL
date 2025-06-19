@@ -245,10 +245,9 @@ def dpo_ranked_loss(pi_log_likelihood, pi_ref_loglikelihood, weights, beta=0.1):
         pi_ratio = beta * pi_log_likelihood
     else:
         pi_ratio = beta * (pi_log_likelihood - pi_ref_loglikelihood)
-
-    uniform_weights = torch.ones_like(pi_ratio)
-    print(f"pi ratios: {pi_ratio}")
-
+    
+    uniform_weights = torch.arange(pi_ratio.size(0) -1 , -1, -1, device=advantages.device, dtype=advantages.dtype)        
+    uniform_weights = torch.softmax(uniform_weights, dim=0)
     
     loss = F.cross_entropy(pi_ratio, uniform_weights)
     return loss
