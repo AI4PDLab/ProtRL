@@ -1,6 +1,6 @@
 pip==25.0.1
-transformers
-trl
+transformers==4.51.3
+trl @ git+https://github.com/huggingface/trl.git@f3e8c2304428ef16e9ae5de9e5741ed84d533b7b
 bitsandbytes
 evaluate
 peft
