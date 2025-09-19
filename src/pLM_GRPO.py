@@ -104,7 +104,7 @@ class pLM_GRPOTrainer(GRPOTrainer):
         rewards_grouped = rewards.view(batch_size, completions_ids.shape[0])
 
         mean_grouped_rewards = rewards_grouped.mean(dim=1)                                   # (N,)
-        std_grouped_rewards  = rewards_grouped.std(dim=1)                                    # (N,)
+        std_grouped_rewards  = rewards_grouped.std(dim=1, unbiased=False)                    # (N,) unbaiased in case of groups with only one element, otherwise we would get nan
 
         mean_per_comp = mean_grouped_rewards.repeat_interleave(completions_ids.shape[0], dim=0)  # (N*G,)
         std_per_comp  = std_grouped_rewards.repeat_interleave(completions_ids.shape[0], dim=0)   # (N*G,)
