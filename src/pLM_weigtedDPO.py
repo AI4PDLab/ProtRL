@@ -110,18 +110,6 @@ class weighted_DPO(GRPOTrainer):
         mean_per_comp = mean_grouped_rewards.repeat_interleave(completions_ids.shape[0], dim=0)  # (N*G,)
         std_per_comp  = std_grouped_rewards.repeat_interleave(completions_ids.shape[0], dim=0)   # (N*G,)
 
-        advantages = rewards - mean_per_comp
-        advantages = advantages / (std_per_comp + 1e-4)
-
-        process_slice = slice(
-            self.accelerator.process_index * len(prompts),
-            (self.accelerator.process_index + 1) * len(prompts),
-        )
-        advantages = advantages[process_slice]
-       
-        advantages = rewards - mean_grouped_rewards
-        
-        advantages = advantages / (std_grouped_rewards + 1e-4)
 
         is_eos = completions_ids == self.processing_class.eos_token_id
         logits_to_keep = completions_ids.size(1)  # we only need to compute the logits for the completion tokens
@@ -184,7 +172,7 @@ class weighted_DPO(GRPOTrainer):
             "prompt_mask": prompt_mask,
             "completion_ids": completions_ids,
             "completion_mask": completions_mask,
-            "advantages": advantages,
+            "rewards": rewards,
             "old_per_token_logps": old_per_token_logps,
             "ref_per_token_logps": ref_per_token_logps,
         }
@@ -203,7 +191,7 @@ class weighted_DPO(GRPOTrainer):
             per_token_logps = self._get_per_token_logps(model, input_ids, attention_mask, logits_to_keep)
             ref_per_token_logps = inputs["ref_per_token_logps"]
 
-            advantages = inputs["advantages"]
+            rewards = inputs["rewards"]
 
             if torch.allclose(ref_per_token_logps, per_token_logps, rtol=1e-5, atol=1e-8): 
                 print("equal")
@@ -211,7 +199,7 @@ class weighted_DPO(GRPOTrainer):
             else:
                 pi_ratio = self.beta * (per_token_logps.mean(1) - ref_per_token_logps.mean(1))
             
-            weights = torch.softmax(advantages, dim=0)
+            weights = torch.softmax(rewards, dim=0)
             loss = F.cross_entropy(pi_ratio, weights)
 
             return loss
