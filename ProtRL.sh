@@ -15,7 +15,7 @@ echo "Saving results to $results_dir"
 if [[ "$model_directory" == "test" ]]; then
     if [ ! -d "./test/tiny" ]; then
         echo "Generating tiny model for testing..."
-        $PYTHON_EXEC setup_tiny_model.py --output_dir "./test/tiny"
+        $PYTHON_EXEC ./src/setup_tiny_model.py --output_dir "./test/tiny"
     else
         echo "Tiny model already exists at ./test/tiny"
     fi
