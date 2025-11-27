@@ -173,7 +173,8 @@ We provide tools for testing and benchmarking different RL algorithms and hyperp
 - **Benchmarking Suite**: `benchmarking/` contains scripts to run comprehensive benchmarks comparing `pLM_GRPO`, `weighted_DPO`, and `trl_GRPO` across various learning rates and betas.
   - Run: `bash benchmarking/run_benchmark.sh`
   - Plot: `python benchmarking/plot_benchmark.py`
-
+### Progen
+for progen you will need to downoload progen and extract it in the progen folder. 
 ### Experiments
 
 To reproduce the experiments of our paper, you can find all the scripts in the `experiments` folder. Given the size and computational needs of pLMs, each one of the experiments were executed in one H100 GPU, with differing times of execution. All the parameters and external data used in the experiments can be found in this repo. The `.sh` scripts can be executed from the same folder to conduct each experiment, they have been built to work on a SLURM based cluster, given the need of GPU-intensive computing. To reproduce the results run: 
