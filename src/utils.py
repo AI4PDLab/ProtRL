@@ -47,7 +47,7 @@ def load_optimizer_scheduler(model, checkpoint, lr, CONFIG):
                 group["initial_lr"] = lr
 
     scheduler = LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
-
+    return model, optimizer, scheduler
 
 def save_config(config, path):
     """Saves a dictionary as a YAML file."""
