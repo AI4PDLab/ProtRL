@@ -11,6 +11,7 @@ import pandas as pd
 import math
 import os
 from pathlib import Path
+import yaml
 
 
 def checkpoint_load(model_path):
@@ -47,4 +48,8 @@ def load_optimizer_scheduler(model, checkpoint, lr, CONFIG):
 
     scheduler = LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
 
-    return optimizer, model, scheduler
+
+def save_config(config, path):
+    """Saves a dictionary as a YAML file."""
+    with open(path, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False)

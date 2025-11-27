@@ -15,10 +15,7 @@ from trl import GRPOConfig, GRPOTrainer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Local imports
-from src.utils import checkpoint_load, load_optimizer_scheduler
-from src.pLM_GRPO import pLM_GRPOTrainer
-from src.pLM_weigtedDPO import weighted_DPO
-from src.utils_logging import save_config
+from src.utils import checkpoint_load, load_optimizer_scheduler, save_config
 
 # Argument parsing
 parser = argparse.ArgumentParser()
