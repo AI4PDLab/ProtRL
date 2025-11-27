@@ -20,6 +20,13 @@ This is the repository for the paper [*Guiding Generative Protein Language Model
 - [References](#references)
 - [Citation](#citation)
 
+## Quick Start
+To verify the installation and pipeline functionality, you can run a quick test using a tiny model:
+```bash
+bash ProtRL.sh --model_dir test
+```
+This will automatically generate a tiny Llama model in `test/tiny` and run the full RL loop.
+
 ## About ProtRL
 
 ProtRL allows you to:
@@ -159,6 +166,13 @@ This generates a TinyLLaMA model, runs RL training, and plots length reduction o
 
 ### Carbonic Anhydrase Fold in ZymCTRL
 We also provide a more complex example in ```example/ZymCTRL-fold```, where the fold of carbonic anhydrase is progressively adapted over RL iterations. In this case esm-fold is required and a GPU of 80GB. 
+
+### Benchmarking and Testing
+We provide tools for testing and benchmarking different RL algorithms and hyperparameters.
+- **Tiny Model**: `setup_tiny_model.py` generates a tiny Llama model for fast local testing and debugging. For fast check you can just run ProtRL.sh and set the `--model_dir` to `test`. it will automatically build the tiny model in `test/tiny` and run the training.
+- **Benchmarking Suite**: `benchmarking/` contains scripts to run comprehensive benchmarks comparing `pLM_GRPO`, `weighted_DPO`, and `trl_GRPO` across various learning rates and betas.
+  - Run: `bash benchmarking/run_benchmark.sh`
+  - Plot: `python benchmarking/plot_benchmark.py`
 
 ### Experiments
 

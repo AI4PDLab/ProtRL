@@ -9,7 +9,8 @@ from datasets import load_dataset, Dataset
 from transformers import AutoTokenizer
 from accelerate.utils import set_seed
 from trl import GRPOConfig
-
+from src.pLM_GRPO import pLM_GRPOTrainer
+from src.pLM_rankedDPO import weighted_DPO
 # Local imports
 from src.utils import checkpoint_load, load_optimizer_scheduler, save_config
 
@@ -127,7 +128,7 @@ else:
 lr_list = np.linspace(CONFIG["learning_rate"], 0.0, num=args.max_iteration_num)
 
 # Load optimizer and scheduler
-optimizer, model, scheduler = load_optimizer_scheduler(
+model, optimizer, scheduler = load_optimizer_scheduler(
     model, 
     checkpoint, 
     lr_list[args.iteration_num-1].item(), 

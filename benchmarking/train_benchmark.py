@@ -10,11 +10,18 @@ from datasets import load_dataset, Dataset
 from transformers import AutoTokenizer
 from accelerate.utils import set_seed
 from trl import GRPOConfig, GRPOTrainer
+from pathlib import Path
 
-# Add parent directory to path to import src
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Ensure project root is on sys.path
+here = Path(__file__).resolve()
+for parent in (here.parent, *here.parents):
+    if (parent / "src" / "__init__.py").exists():
+        if str(parent) not in sys.path:
+            sys.path.insert(0, str(parent))
+        break
 
-# Local imports
+from src.pLM_GRPO import pLM_GRPOTrainer
+from src.pLM_rankedDPO import weighted_DPO
 from src.utils import checkpoint_load, load_optimizer_scheduler, save_config
 
 # Argument parsing
@@ -146,7 +153,7 @@ else:
 lr_list = np.linspace(CONFIG["learning_rate"], 0.0, num=args.max_iteration_num)
 
 # Load optimizer and scheduler
-optimizer, model_obj, scheduler = load_optimizer_scheduler(
+model_obj, optimizer, scheduler = load_optimizer_scheduler(
     model, 
     checkpoint, 
     lr_list[args.iteration_num-1].item(), 
