@@ -1,23 +1,13 @@
 from typing import Any, Callable, Optional, Union
 import torch
-import types
-from trl import GRPOTrainer, GRPOConfig
-from datasets import load_dataset, Dataset, IterableDataset
-from trl import GRPOConfig, GRPOTrainer
-from transformers import AutoTokenizer, PreTrainedModel, AutoModelForCausalLM, PreTrainedTokenizerBase, TrainerCallback
+from datasets import Dataset, IterableDataset
+from transformers import AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizerBase, TrainerCallback
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from torch.utils.data import Sampler, RandomSampler
-
-from datasets import load_dataset
 from trl import GRPOConfig, GRPOTrainer
 from trl.models import create_reference_model            
-
-from transformers import AutoTokenizer
 from trl.trainer.utils import pad
-from torch import nn
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
-from typing import Any, Optional, Union
-
+from accelerate.utils import gather_object
 
 class pLM_GRPOTrainer(GRPOTrainer):
     def __init__(
@@ -48,32 +38,33 @@ class pLM_GRPOTrainer(GRPOTrainer):
             peft_config=peft_config,
         )
 
-        # Reference model
+        # Reference model setup
         model_init_kwargs = args.model_init_kwargs or {}
-        print(ref_model, model)
-        ref_model = AutoModelForCausalLM.from_pretrained(ref_model).to("cuda")
+        
+        # Note: ref_model argument is shadowed here by the loaded model object
+        # This assumes ref_model passed as argument is a string path
+        ref_model_path = ref_model
+        print(f"Loading reference model from {ref_model_path}")
+        ref_model = AutoModelForCausalLM.from_pretrained(ref_model_path).to("cuda")
 
         if self.beta == 0.0:
             # If beta is 0.0, the reference model is not needed
             self.ref_model = None
         elif is_deepspeed_zero3_enabled():
-            self.ref_model = AutoModelForCausalLM.from_pretrained(ref_model, **model_init_kwargs)
+            # If using DeepSpeed Zero3, load using the path and init kwargs
+            self.ref_model = AutoModelForCausalLM.from_pretrained(ref_model_path, **model_init_kwargs)
         else:
-            # If PEFT configuration is not provided, create a reference model based on the initial model.
+            # Otherwise create reference model from the loaded model object
             self.ref_model = create_reference_model(ref_model)
     
     def _get_train_sampler(self, dataset: Optional[Dataset] = None) -> Sampler:
-
         if dataset is None:
             dataset = self.train_dataset
-            
         return RandomSampler(self.train_dataset)
     
     def _get_eval_sampler(self, dataset: Optional[Dataset] = None) -> Sampler:
-
         if dataset is None:
             dataset = self.eval_dataset
-            
         return RandomSampler(self.eval_dataset)
 
     def _generate_and_score_completions(
@@ -82,55 +73,49 @@ class pLM_GRPOTrainer(GRPOTrainer):
         
         device = self.accelerator.device
         mode = "eval" if self.control.should_evaluate else "train"
+        
+        # Process prompts
         prompts = [x["prompt"] for x in inputs]
-
         prompt_inputs = self.processing_class(text=prompts, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False)
         prompt_ids, prompt_mask = prompt_inputs["input_ids"].to(device), prompt_inputs["attention_mask"].to(device)
         
+        # Process completions
         completions = [x["completion"] for x in inputs]
-
-
         completions_input = self.processing_class(text=completions, return_tensors="pt", padding=True, padding_side="right", add_special_tokens=False)
         completions_ids, completions_mask = completions_input["input_ids"].to(device), completions_input["attention_mask"].to(device)
-
-        completions_ids = [torch.tensor(ids, device=device) for ids in completions_ids]
         completions_ids = pad(completions_ids, padding_value=self.processing_class.pad_token_id)
+        
+        # Concatenate prompt and completion
         prompt_completion_ids = torch.cat([prompt_ids, completions_ids], dim=1).to(device)
         attention_mask = torch.cat([prompt_mask, completions_mask], dim=1).to(device)
         
+        # Process rewards
         rewards = torch.tensor([x["reward"] for x in inputs], device=device)
                 
-        batch_size = rewards.shape[0] // completions_ids.shape[0]
+        # Calculate grouped rewards
+        # Note: This assumes batch_size corresponds to the number of groups, which might be 1 if inputs contains all generations for a single prompt
+        batch_size = rewards.shape[0] // completions_ids.shape[0] # This evaluates to 1
         rewards_grouped = rewards.view(batch_size, completions_ids.shape[0])
 
         mean_grouped_rewards = rewards_grouped.mean(dim=1)                                   # (N,)
-        std_grouped_rewards  = rewards_grouped.std(dim=1, unbiased=False)                    # (N,) unbaiased in case of groups with only one element, otherwise we would get nan
+        std_grouped_rewards  = rewards_grouped.std(dim=1, unbiased=False)                    # (N,)
 
-        mean_per_comp = mean_grouped_rewards.repeat_interleave(completions_ids.shape[0], dim=0)  # (N*G,)
-        std_per_comp  = std_grouped_rewards.repeat_interleave(completions_ids.shape[0], dim=0)   # (N*G,)
-
-        advantages = rewards - mean_per_comp
-        advantages = advantages / (std_per_comp + 1e-4)
-
-        process_slice = slice(
-            self.accelerator.process_index * len(prompts),
-            (self.accelerator.process_index + 1) * len(prompts),
-        )
-        advantages = advantages[process_slice]
-       
+        # Calculate advantages
+        # Note: The original code had redundant calculations and a slice that was overwritten. 
+        # We use the full local batch here, consistent with the effective behavior of the original code.
         advantages = rewards - mean_grouped_rewards
-        
         advantages = advantages / (std_grouped_rewards + 1e-4)
-
+        
+        # Prepare for logit computation
         is_eos = completions_ids == self.processing_class.eos_token_id
-        logits_to_keep = completions_ids.size(1)  # we only need to compute the logits for the completion tokens
+        logits_to_keep = completions_ids.size(1)
         batch_size = self.args.per_device_train_batch_size if mode == "train" else self.args.per_device_eval_batch_size
 
         with torch.no_grad():
-            # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip it's
+            # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip its
             # computation here, and use per_token_logps.detach() instead.
             if self.num_iterations > 1:
-                old_per_token_logps = self._get_per_token_logps(
+                old_per_token_logps, _ = self._get_per_token_logps_and_entropies(
                     self.model, prompt_completion_ids, attention_mask, logits_to_keep, batch_size
                 )
             else:
@@ -139,33 +124,32 @@ class pLM_GRPOTrainer(GRPOTrainer):
             if self.beta == 0.0:
                 ref_per_token_logps = None
             elif self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(
+                ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(
                     self.ref_model, prompt_completion_ids, attention_mask, logits_to_keep, batch_size
                 )
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(
+                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(
                         self.model, prompt_completion_ids, attention_mask, logits_to_keep, batch_size
                     )
 
-
+        # Logging
         if mode == "train":
             self.state.num_input_tokens_seen += self.accelerator.gather_for_metrics(attention_mask.sum()).sum().item()
         self._metrics[mode]["num_tokens"] = [self.state.num_input_tokens_seen]
 
-        # log completion lengths, mean, min, max
+        # Log completion lengths
         agg_completions_mask = self.accelerator.gather_for_metrics(completions_mask.sum(1))
         self._metrics[mode]["completions/mean_length"].append(agg_completions_mask.float().mean().item())
         self._metrics[mode]["completions/min_length"].append(agg_completions_mask.float().min().item())
         self._metrics[mode]["completions/max_length"].append(agg_completions_mask.float().max().item())
 
-        # identify sequences that terminated with EOS and log their lengths
+        # Log terminated sequences
         agg_terminated_with_eos = self.accelerator.gather_for_metrics(is_eos.any(dim=1))
         term_completions_mask = agg_completions_mask[agg_terminated_with_eos]
         clipped_completions_ratio = 1 - len(term_completions_mask) / len(agg_completions_mask)
         self._metrics[mode]["completions/clipped_ratio"].append(clipped_completions_ratio)
         if len(term_completions_mask) == 0:
-            # edge case where no completed sequences are found
             term_completions_mask = torch.zeros(1, device=device)
         self._metrics[mode]["completions/mean_terminated_length"].append(term_completions_mask.float().mean().item())
         self._metrics[mode]["completions/min_terminated_length"].append(term_completions_mask.float().min().item())
@@ -175,8 +159,8 @@ class pLM_GRPOTrainer(GRPOTrainer):
         self._metrics[mode]["reward_std"].append(std_grouped_rewards.mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs["prompt"].extend(gather_object(prompts))
-        self._textual_logs["completion"].extend(gather_object(completions))
+        self._logs["prompt"].extend(gather_object(prompts))
+        self._logs["completion"].extend(gather_object(completions))
         
         return {
             "prompt_ids": prompt_ids,
@@ -186,5 +170,6 @@ class pLM_GRPOTrainer(GRPOTrainer):
             "advantages": advantages,
             "old_per_token_logps": old_per_token_logps,
             "ref_per_token_logps": ref_per_token_logps,
+            "num_items_in_batch": torch.tensor(batch_size, device=device),
         }
     

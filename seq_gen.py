@@ -1,128 +1,128 @@
 import torch
-from transformers import GPT2LMHeadModel, AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import argparse
+import math
 import os
 from tqdm import tqdm
-import math
-import argparse
 
-
-
-def remove_characters(sequence, char_list):
-    "This function removes special tokens used during training."
-    columns = sequence.split('<sep>')
-    seq = columns[1]
-    for char in char_list:
-        seq = seq.replace(char, '')
-    return seq
-
-def calculatePerplexity(input_ids,model,tokenizer):
-    "This function computes perplexities for the generated sequences"
+def calculate_perplexity(input_ids, model):
+    """
+    Computes perplexity for the generated sequences.
+    Perplexity = exp(loss)
+    """
     with torch.no_grad():
         outputs = model(input_ids, labels=input_ids)
-    loss, logits = outputs[:2]
+    loss = outputs.loss
     return math.exp(loss)
 
-def calculateloglikelihood(input_ids, model, ref_model, tokenizer):
-    "This function computes perplexities for the generated sequences"
+def calculate_log_likelihood(input_ids, model, ref_model):
+    """
+    Computes implicit reward (log likelihood difference) between model and ref_model.
+    Reward = ref_loss - model_loss
+    """
     with torch.no_grad():
         outputs_model = model(input_ids, labels=input_ids)
         outputs_ref_model = ref_model(input_ids, labels=input_ids)
 
-    loss, logits = outputs_model[:2]
-    ref_loss, logits=outputs_ref_model[:2]
-    i_reward = -(loss - ref_loss)
-    return i_reward
-    
-        
-def main(label, model,special_tokens,device,tokenizer):
+    loss = outputs_model.loss
+    ref_loss = outputs_ref_model.loss
+    implicit_reward = ref_loss - loss 
+    return implicit_reward.item()
 
+def generate_sequences(label, model, tokenizer, device, num_sequences=20, max_length=100):
+    """
+    Generates sequences using the model.
+    """
+    input_ids = tokenizer.encode(label, return_tensors='pt').to(device)
     
-    # Generating sequences
-    input_ids = tokenizer.encode(label,return_tensors='pt').to(device)
     outputs = model.generate(
         input_ids, 
-        top_k=9, #tbd
+        top_k=9, 
         repetition_penalty=1.2,
-        max_length=1014,
-        eos_token_id=1,
-        pad_token_id=0,
+        max_length=max_length,    
         do_sample=True,
-        num_return_sequences=20) # Depending non your GPU, you'll be able to generate fewer or more sequences. This runs in an A40.
+        num_return_sequences=num_sequences,
+        pad_token_id=tokenizer.eos_token_id
+    )
     
-    # Check sequence sanity, ensure sequences are not-truncated.
-    # The model will truncate sequences longer than the specified max_length (1024 above). We want to avoid those sequences.
-    new_outputs = [ output for output in outputs if output[-1] == 0]
-    if not new_outputs:
-        print("not enough sequences with short lengths!!")
+    return outputs
 
-    # Compute perplexity for every generated sequence in the batch
-    ppls = [(tokenizer.decode(output), calculatePerplexity(output, model, tokenizer), calculateloglikelihood(output, model, ref_model, tokenizer)) for output in new_outputs ]
+def main():
+    parser = argparse.ArgumentParser(description="Generate sequences using a pretrained LLM.")
+    parser.add_argument("--model_dir", type=str, required=True, help="Path to the pretrained model directory.")
+    parser.add_argument("--label", type=str, required=True, help="Prompt/Label for generation.")
+    parser.add_argument("--num_sequences", type=int, default=20, help="Number of sequences to generate.")
+    parser.add_argument("--max_length", type=int, default=100, help="Maximum length of generated sequences.")
+    parser.add_argument("--iteration_num", type=int, default=0, help="Iteration number for model selection and output filename.")
+    parser.add_argument("--output_dir", type=str, default=".", help="Directory to save results and look for models.")
     
-    
-    # Sort the batch by perplexity, the lower the better
-    ppls.sort(key=lambda i:i[1]) # duplicated sequences?
-
-    # Final dictionary with the results
-    sequences={}
-    sequences[label] = [(remove_characters(x[0], special_tokens), x[1], x[2]) for x in ppls]
-
-    return sequences
-
-if __name__=='__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--iteration_num", type=int)
-    parser.add_argument("--label", type=str)
     args = parser.parse_args()
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    # Determine model path based on iteration number
     iteration_num = args.iteration_num
-    ec_label = args.label
-    labels = [ec_label.strip()]
-
-    device = torch.device("cuda") # Replace with 'cpu' if you don't have a GPU - but it will be slow
-    print('Reading pretrained model and tokenizer')
-    
-    
-    if iteration_num == 0:
-      model_name = 'AI4PD/ZymCTRL'
-    else:
-      model_name = f'./output_iteration{iteration_num}'
-    
-    if iteration_num == 0:
+    if iteration_num <= 1:
         model_name = args.model_dir
+    else:
+        # Check output_dir first for the PREVIOUS iteration's model
+        prev_iteration = iteration_num - 1
+        prev_model_dir = os.path.join(args.output_dir, f'output_iteration{prev_iteration}')
+        if os.path.exists(prev_model_dir):
+            model_name = prev_model_dir
+        else:
+            # Fallback
+            model_name = f'./output_iteration{prev_iteration}'
 
-    print(f'Model {model_name} has been loaded')
+    print(f"Loading model and tokenizer from {model_name}...")
+    try:
+        # Tokenizer is usually loaded from the base model directory
+        tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+        model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+        # Reference model is loaded from the base model directory
+        ref_model = AutoModelForCausalLM.from_pretrained(args.model_dir).to(device) 
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        return
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_dir) # change to ZymCTRL location
-    model = GPT2LMHeadModel.from_pretrained(model_name).to(device) # change to ZymCTRL location
-    special_tokens = ['<start>', '<end>', '<|endoftext|>','<pad>',' ', '<sep>']
-    ref_model = GPT2LMHeadModel.from_pretrained("AI4PD/ZymCTRL").to(device) # change to ZymCTRL location
+    print("Model loaded.")
 
-    label = ec_label
+    print(f"Generating {args.num_sequences} sequences for label: '{args.label}'")
+
+    generated_ids = generate_sequences(args.label, model, tokenizer, device, args.num_sequences, args.max_length)
     
-    canonical_amino_acids = set("ACDEFGHIKLMNPQRSTVWY")  # Set of canonical amino acids
+    results = []
+    print("Computing metrics...")
+    for i, output_ids in enumerate(tqdm(generated_ids)):
+        # Decode sequence and remove spaces (assuming protein sequences)
+        sequence_text = tokenizer.decode(output_ids, skip_special_tokens=True).replace(" ","")
+        
+        # Calculate metrics
+        output_ids_batch = output_ids.unsqueeze(0)
+        
+        ppl = calculate_perplexity(output_ids_batch, model)
+        reward = calculate_log_likelihood(output_ids_batch, model, ref_model)
+        
+        results.append({
+            "sequence": sequence_text,
+            "perplexity": ppl,
+            "reward": reward
+        })
+
+    # Sort by perplexity (lower is better)
+    results.sort(key=lambda x: x["perplexity"])
+
+    output_filename = os.path.join(args.output_dir, f"seq_gen_{args.label}_iteration{iteration_num}.fasta")
     
-    for label in tqdm(labels):
-        all_sequences = []
-        for i in range(10):
-            sequences = main(label, model, special_tokens, device, tokenizer)
-            for key, value in sequences.items():
-                for index, val in enumerate(value):
-                    if all(char in canonical_amino_acids for char in val[0]):
-                        sequence_info = {
-                            'label': label,
-                            'batch': i,
-                            'index': index,
-                            'pepr': float(val[1]),
-                            'fasta': f">{label}_{i}_{index}\t{val[1]}\t{val[2]}\n{val[0]}\n"
-                        }
-                        all_sequences.append(sequence_info)
-        #all_sequences.sort(key=lambda x: x['pepr'])
-        #top_sequences = all_sequences[:20] #get the top 20
-        fasta_content = ''.join(seq['fasta'] for seq in all_sequences)
-        
-        output_filename = f"seq_gen_{label}_iteration{iteration_num}.fasta"
-        print(fasta_content)
-        with open(output_filename, "w") as fn:
-            fn.write(fasta_content)
-        
-        
-    
+    # Write to FASTA
+    print(f"Writing results to {output_filename}")
+    with open(output_filename, "w") as f:
+        for i, res in enumerate(results):
+            header = f">{args.label}_{i}\tppl={res['perplexity']:.4f}\treward={res['reward']:.4f}"
+            f.write(f"{header}\n{res['sequence']}\n")
+
+    print("Done.")
+
+if __name__ == "__main__":
+    main()

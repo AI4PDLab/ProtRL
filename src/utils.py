@@ -16,6 +16,7 @@ from pathlib import Path
 def checkpoint_load(model_path):
    
     base_path = Path(model_path)
+    checkpoint = None
     for p in base_path.rglob("checkpoint-*"):
             if p.is_dir():
                 checkpoint = p.resolve()
