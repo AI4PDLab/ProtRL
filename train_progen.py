@@ -154,6 +154,7 @@ current_lr = lr_list[args.iteration_num-1].item()
 # Load Model (ProGen)
 print(f"Loading ProGen model from {model_path}")
 model = ProGenForCausalLM.from_pretrained(model_path)
+ref_model = ProGenForCausalLM.from_pretrained(model_path)
 
 # Optimizer
 optimizer = AdamW(
@@ -202,7 +203,7 @@ print("Model:", model)
 # Initialize trainer
 trainer = pLM_GRPOTrainer(
     model=model,
-    ref_model=args.model_dir, # Note: ref_model needs to be handled. pLM_GRPOTrainer handles string path.
+    ref_model=ref_model,
     reward_funcs=reward_len,
     args=training_args,
     train_dataset=train_dataset,

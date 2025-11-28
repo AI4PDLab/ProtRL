@@ -41,21 +41,26 @@ class pLM_GRPOTrainer(GRPOTrainer):
         # Reference model setup
         model_init_kwargs = args.model_init_kwargs or {}
         
-        # Note: ref_model argument is shadowed here by the loaded model object
-        # This assumes ref_model passed as argument is a string path
-        ref_model_path = ref_model
-        print(f"Loading reference model from {ref_model_path}")
-        ref_model = AutoModelForCausalLM.from_pretrained(ref_model_path).to("cuda")
+        # Handle ref_model being a string path or a model object
+        if isinstance(ref_model, str):
+            ref_model_path = ref_model
+            print(f"Loading reference model from {ref_model_path}")
+            if is_deepspeed_zero3_enabled():
+                self.ref_model = AutoModelForCausalLM.from_pretrained(ref_model_path, **model_init_kwargs)
+            else:
+                self.ref_model = AutoModelForCausalLM.from_pretrained(ref_model_path).to("cuda")
+        else:
+            # ref_model is already an object
+            self.ref_model = ref_model
+            if not is_deepspeed_zero3_enabled():
+                self.ref_model = self.ref_model.to("cuda")
 
         if self.beta == 0.0:
             # If beta is 0.0, the reference model is not needed
             self.ref_model = None
-        elif is_deepspeed_zero3_enabled():
-            # If using DeepSpeed Zero3, load using the path and init kwargs
-            self.ref_model = AutoModelForCausalLM.from_pretrained(ref_model_path, **model_init_kwargs)
-        else:
-            # Otherwise create reference model from the loaded model object
-            self.ref_model = create_reference_model(ref_model)
+        elif self.ref_model is None and not is_deepspeed_zero3_enabled():
+             # Fallback if ref_model was not set above (should not happen with new logic unless ref_model arg was None?)
+             pass
     
     def _get_train_sampler(self, dataset: Optional[Dataset] = None) -> Sampler:
         if dataset is None:

@@ -45,22 +45,40 @@ def main():
 
     combined_df = pd.concat(all_data, ignore_index=True)
     
+    # Extract method from run_id
+    # run_id format: method_betaX_lrY_isZ
+    # Methods: pLM_GRPO, weighted_DPO, trl_GRPO
+    def get_method(run_id):
+        if run_id.startswith("pLM_GRPO"):
+            return "pLM_GRPO"
+        elif run_id.startswith("weighted_DPO"):
+            return "weighted_DPO"
+        elif run_id.startswith("trl_GRPO"):
+            return "trl_GRPO"
+        else:
+            return "other"
+
+    combined_df["method"] = combined_df["run_id"].apply(get_method)
+    
     # Save combined logs
     combined_csv = os.path.join(args.results_dir, "benchmark_combined_logs.csv")
     combined_df.to_csv(combined_csv, index=False)
     print(f"Combined logs saved to {combined_csv}")
 
     # Plotting
-    plt.figure(figsize=(14, 8))
+    # Create a FacetGrid with one plot per method
+    # Share x axis, but maybe not y axis if scales differ significantly? User didn't specify.
+    # Usually better to share y for comparison, but if one explodes it hides others.
+    # Let's share both for now to allow direct comparison.
     
-    # Plot Length vs Iteration, hue by run_id
-    sns.lineplot(data=combined_df, x="iteration_num", y="length", hue="run_id", marker="o")
+    g = sns.FacetGrid(combined_df, col="method", col_wrap=3, height=5, aspect=1.5, sharey=False)
+    g.map_dataframe(sns.lineplot, x="iteration_num", y="length", hue="run_id", marker="o")
+    g.add_legend()
+    g.set_titles("{col_name}")
+    g.set_axis_labels("Iteration", "Sequence Length")
     
-    plt.title("Sequence Length over Iterations (Benchmark)")
-    plt.xlabel("Iteration")
-    plt.ylabel("Sequence Length")
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-    plt.tight_layout()
+    plt.subplots_adjust(top=0.9)
+    g.fig.suptitle("Sequence Length over Iterations by Method")
     
     output_plot = os.path.join(args.results_dir, "benchmark_comparison.png")
     plt.savefig(output_plot)

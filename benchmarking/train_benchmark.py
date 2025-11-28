@@ -96,7 +96,6 @@ def generate_dataset(iteration_num, label):
     logs_path = os.path.join(args.output_dir, "logs.csv")
     
     if not os.path.exists(logs_path):
-        # If logs don't exist in output_dir, we can't train (unless it's iter 1 and we look elsewhere? No, benchmarking should be self-contained)
         raise FileNotFoundError(f"logs.csv not found in {args.output_dir}")
         
     df = pd.read_csv(logs_path)
@@ -105,9 +104,7 @@ def generate_dataset(iteration_num, label):
     rows = []
     for idx, entry in df.iterrows():
         sequence = entry["sequence"]
-        # For pLM_GRPO and weighted_DPO, we use the pre-calculated reward from logs? 
-        # Actually, in train.py, reward is calculated here: float(-abs(50-len(sequence)))
-        # So we do the same here.
+       
         rows.append({
             "prompt": label,
             "completion": format_sequence(sequence, label),
@@ -185,7 +182,7 @@ print(f"Method: {args.method}, Model: {model}")
 if args.method == "pLM_GRPO":
     trainer = pLM_GRPOTrainer(
         model=model_obj,
-        ref_model=args.model_dir, # pLM_GRPO uses ref_model path string or model? In train.py it passed args.model_dir (string)
+        ref_model=args.model_dir, 
         reward_funcs=reward_len, # Dummy for pLM_GRPO as it uses dataset rewards
         args=training_args,
         train_dataset=train_dataset,
@@ -205,25 +202,25 @@ elif args.method == "weighted_DPO":
         optimizers=(optimizer, scheduler)
     )
 elif args.method == "trl_GRPO":
-    # Standard TRL GRPO
-    # Note: TRL GRPO might not accept optimizers tuple in the same way or might need ref_model initialized differently
-    # But we are passing model_obj (PreTrainedModel).
-    # TRL GRPO creates ref_model automatically if not provided, or we can pass it.
-    # We should probably pass the ref_model to ensure fairness.
-    # But TRL GRPO init signature: model, reward_funcs, args, ...
-    # It doesn't take 'ref_model' as a direct arg in __init__ usually, it handles it internally or via PEFT.
-    # Wait, pLM_GRPOTrainer inherits from GRPOTrainer and adds ref_model arg.
-    # Standard GRPOTrainer does NOT have ref_model arg in __init__?
-    # Let's check TRL docs or source if possible. Assuming standard TRL behavior: it creates ref model from model if not PEFT.
-    # We want to use the BASE model as reference? Or previous model?
-    # Usually reference is the model before this update step (or fixed base).
-    # pLM_GRPO uses `args.model_dir` (fixed base) as reference.
-    # So for TRL GRPO, we should probably let it create the ref model from the current model (standard PPO/GRPO behavior) OR try to force it to use base.
-    # But standard GRPO usually uses the policy at start of training as ref.
-    # Given we are fine-tuning iteratively, maybe we want ref to be the model at start of this iteration.
-    # Which is what `model_obj` is.
-    # So we don't need to pass ref_model explicitly to TRL GRPO, it will create it.
-    
+
+    def generate_dataset(label):
+
+        rows = []
+        for _ in range(2_000):
+            
+            rows.append({
+                "prompt": label,
+                "completion": "",
+            })
+        
+        return Dataset.from_list(rows)
+
+    dataset = generate_dataset( "M")
+    split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
+
+    train_dataset = split['train']
+    eval_dataset   = split['test'] 
+
     trainer = GRPOTrainer(
         model=model_obj,
         reward_funcs=reward_len, # This needs to be callable

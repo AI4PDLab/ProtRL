@@ -3,7 +3,7 @@
 # Benchmark Configuration
 label="M"
 model_directory="test"
-max_iteration_num=50
+max_iteration_num=30
 PYTHON_EXEC="/users/nferruz/fstocco/Desktop/venv/bin/python"
 
 # Root directory (assuming script is in benchmarking/)
@@ -45,27 +45,10 @@ run_experiment() {
     local run_dir="$benchmark_dir/$run_id"
     mkdir -p "$run_dir"
     
-    for i in $(seq 1 $max_iteration_num)
-    do
-        echo "Run $run_id - Iteration $i"
-        
-        # Sequence Generation
-        $PYTHON_EXEC "$ROOT_DIR/seq_gen.py" \
-            --iteration_num $i \
-            --label $label \
-            --model_dir "$actual_model_dir" \
-            --output_dir "$run_dir"
-            
-        # Dataset Generation
-        $PYTHON_EXEC "$ROOT_DIR/dataset_gen.py" \
-            --iteration_num $i \
-            --label $label \
-            --model_dir "$actual_model_dir" \
-            --output_dir "$run_dir"
-            
-        # Training
+    if [[ "$method" == "trl_GRPO" ]]; then
+        echo "Running single training session for trl_GRPO"
         $PYTHON_EXEC train_benchmark.py \
-            --iteration_num $i \
+            --iteration_num 1 \
             --label $label \
             --model_dir "$actual_model_dir" \
             --max_iteration_num $max_iteration_num \
@@ -74,8 +57,39 @@ run_experiment() {
             --beta "$beta" \
             --learning_rate "$lr" \
             --importance_sampling "$is_level"
+    else
+        for i in $(seq 1 $max_iteration_num)
+        do
+            echo "Run $run_id - Iteration $i"
             
-    done
+            # Sequence Generation
+            $PYTHON_EXEC "$ROOT_DIR/seq_gen.py" \
+                --iteration_num $i \
+                --label $label \
+                --model_dir "$actual_model_dir" \
+                --output_dir "$run_dir"
+                
+            # Dataset Generation
+            $PYTHON_EXEC "$ROOT_DIR/dataset_gen.py" \
+                --iteration_num $i \
+                --label $label \
+                --model_dir "$actual_model_dir" \
+                --output_dir "$run_dir"
+                
+            # Training
+            $PYTHON_EXEC train_benchmark.py \
+                --iteration_num $i \
+                --label $label \
+                --model_dir "$actual_model_dir" \
+                --max_iteration_num $max_iteration_num \
+                --output_dir "$run_dir" \
+                --method "$method" \
+                --beta "$beta" \
+                --learning_rate "$lr" \
+                --importance_sampling "$is_level"
+                
+        done
+    fi
     
     echo "Experiment $run_id completed."
 }
@@ -84,23 +98,26 @@ run_experiment() {
 
 # 1. pLM_GRPO (LRs: 1e-4, 1e-5, 1e-6)
 # Assuming default beta 0.01 for pLM_GRPO as not specified otherwise
-for lr in 1e-4 1e-5 1e-6; do
-    run_experiment "pLM_GRPO" 0.01 "$lr" "sequence"
+for beta in 0.1 0.001; do
+    for lr in 2e-3 2e-4 2e-5; do
+        run_experiment "pLM_GRPO" "$beta" "$lr" "sequence"
+    done
 done
 
 # 2. weighted_DPO (Betas: 0.1, 0.01, 0.001; LRs: 1e-4, 1e-5, 1e-6)
-for beta in 0.1 0.01 0.001; do
-    for lr in 1e-4 1e-5 1e-6; do
+for beta in 0.1 0.001; do
+    for lr in 2e-3 2e-4 2e-5; do
         run_experiment "weighted_DPO" "$beta" "$lr" "sequence"
     done
 done
 
 # 3. trl_GRPO (LRs: 1e-4, 1e-5, 1e-6; IS: token, sequence)
 # Assuming default beta 0.01 for trl_GRPO
-for lr in 1e-4 1e-5 1e-6; do
-    for is_level in "token" "sequence"; do
-        run_experiment "trl_GRPO" 0.01 "$lr" "$is_level"
+for beta in 0.1 0.001; do
+    for lr in 2e-3 2e-4 2e-5; do
+        for is_level in "token" "sequence"; do
+            run_experiment "trl_GRPO" "$beta" "$lr" "$is_level"
+        done
     done
-done
 
 echo "All benchmarks completed."
