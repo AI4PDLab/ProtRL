@@ -31,7 +31,7 @@ parser.add_argument("--label", type=str, required=True)
 parser.add_argument("--model_dir", type=str, required=True)
 parser.add_argument("--max_iteration_num", type=int, required=True)
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save results for this specific run")
-parser.add_argument("--method", type=str, choices=["pLM_GRPO", "weighted_DPO", "trl_GRPO"], required=True)
+parser.add_argument("--method", type=str, choices=["pLM_GRPO", "weighted_DPO"], required=True)
 parser.add_argument("--beta", type=float, default=0.01)
 parser.add_argument("--learning_rate", type=float, default=1e-6)
 parser.add_argument("--importance_sampling", type=str, default="sequence", choices=["token", "sequence"])
@@ -201,37 +201,7 @@ elif args.method == "weighted_DPO":
         processing_class=tokenizer,
         optimizers=(optimizer, scheduler)
     )
-elif args.method == "trl_GRPO":
 
-    def generate_dataset(label):
-
-        rows = []
-        for _ in range(2_000):
-            
-            rows.append({
-                "prompt": label,
-                "completion": "",
-            })
-        
-        return Dataset.from_list(rows)
-
-    dataset = generate_dataset( "M")
-    split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
-
-    train_dataset = split['train']
-    eval_dataset   = split['test'] 
-
-    trainer = GRPOTrainer(
-        model=model_obj,
-        reward_funcs=reward_len, # This needs to be callable
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        processing_class=tokenizer,
-        optimizers=(optimizer, scheduler)
-    )
-
-if args.method != "trl_GRPO":
     # Custom trainers might need this manual assignment if not handled in super
     trainer.lr_scheduler = scheduler
     trainer.lr_scheduler_state = None

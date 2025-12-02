@@ -10,7 +10,7 @@ from trl import GRPOConfig, GRPOTrainer
 BASE_DIR = "/users/nferruz/fstocco/Desktop/ProtRL/benchmarking/results/20251127_201239"
 MODEL_PATH = "/users/nferruz/fstocco/Desktop/ProtRL/test/tiny"
 SEED = 42
-NUM_SAMPLES = 1000
+NUM_SAMPLES = 500
 SPLIT_PERCENT = 0.1
 NUM_EPOCHS = 1
 NUM_GENERATIONS = 8
@@ -24,12 +24,10 @@ set_seed(SEED)
 os.makedirs(BASE_DIR, exist_ok=True)
 
 # Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
+tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, add_bos_token=False)
 
 def generate_dataset(num_samples=NUM_SAMPLES):
-    rows = [{"prompt": "M", "completion": ""} for _ in range(num_samples)]
+    rows = [{"prompt": "<|bos|>", "completion": ""} for _ in range(num_samples)]
     return Dataset.from_list(rows)
 
 # Prepare dataset

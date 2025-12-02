@@ -67,13 +67,13 @@ def generate_dataset():
     rows = []
     for idx, entry in df.iterrows():
         sequence = entry["sequence"]
-        advantage = entry["advantage"]
+        reward = entry["reward"]
         prompt = entry["prompt"]
         
         rows.append({
             "prompt": prompt,
             "completion": sequence,
-            "reward": advantage
+            "reward": reward
         })
     
     return Dataset.from_list(rows)
