@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from datasets import load_dataset, Dataset
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from accelerate.utils import set_seed
 from trl import GRPOConfig, GRPOTrainer
 from pathlib import Path
@@ -22,6 +22,7 @@ for parent in (here.parent, *here.parents):
 
 from src.pLM_GRPO import pLM_GRPOTrainer
 from src.pLM_rankedDPO import weighted_DPO
+from src.pLM_REINFORCE import REINFORCE
 from src.utils import checkpoint_load, load_optimizer_scheduler, save_config
 
 # Argument parsing
@@ -31,7 +32,7 @@ parser.add_argument("--label", type=str, required=True)
 parser.add_argument("--model_dir", type=str, required=True)
 parser.add_argument("--max_iteration_num", type=int, required=True)
 parser.add_argument("--output_dir", type=str, required=True, help="Directory to save results for this specific run")
-parser.add_argument("--method", type=str, choices=["pLM_GRPO", "weighted_DPO"], required=True)
+parser.add_argument("--method", type=str, choices=["pLM_GRPO", "weighted_DPO", "trl_GRPO", "pLM_REINFORCE"], required=True)
 parser.add_argument("--beta", type=float, default=0.01)
 parser.add_argument("--learning_rate", type=float, default=1e-6)
 parser.add_argument("--importance_sampling", type=str, default="sequence", choices=["token", "sequence"])
@@ -75,13 +76,6 @@ def seed_everything(seed):
 
 def reward_len(completions, **kwargs):
     """Reward function: penalize deviation from length 50."""
-    # TRL GRPOTrainer expects a list of rewards (one per completion)
-    # But pLM_GRPO/weighted_DPO might handle it differently?
-    # pLM_GRPO uses implicit reward from logs.csv usually, but here we might need explicit reward for trl_GRPO?
-    # Wait, pLM_GRPO and weighted_DPO in this codebase use the 'rewards' column from the dataset (which comes from logs.csv).
-    # trl_GRPO usually calculates rewards on the fly using reward_funcs.
-    # The user said "trl GRPO with the same training objective of reducing the lenght of the sequence up to 50 characters".
-    # So for trl_GRPO, we need a callable reward function.
     rewards = []
     for c in completions:
         rewards.append(float(-abs(50 - len(c))))
@@ -113,15 +107,28 @@ def generate_dataset(iteration_num, label):
     
     return Dataset.from_list(rows)
 
+def generate_dummy_dataset(num_samples=500):
+    """Generates dummy dataset for online methods."""
+    rows = [{"prompt": args.label, "completion": ""} for _ in range(num_samples)]
+    return Dataset.from_list(rows)
+
 # Set seed
 seed_everything(CONFIG["seed"])
 
 # Create dataset
-dataset = generate_dataset(args.iteration_num, args.label)
-split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
-
-train_dataset = split['train']
-eval_dataset = split['test'] 
+if args.method == "trl_GRPO":
+    dataset = generate_dummy_dataset()
+    # For online GRPO, we don't strictly need a train/test split of pre-generated data,
+    # but GRPOTrainer expects train_dataset.
+    split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
+    train_dataset = split['train']
+    eval_dataset = split['test']
+else:
+    # Offline methods (pLM_GRPO, weighted_DPO, pLM_REINFORCE) use logs.csv
+    dataset = generate_dataset(args.iteration_num, args.label)
+    split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
+    train_dataset = split['train']
+    eval_dataset = split['test']
 
 # Load tokenizer
 tokenizer_dir = args.model_dir
@@ -183,7 +190,7 @@ if args.method == "pLM_GRPO":
     trainer = pLM_GRPOTrainer(
         model=model_obj,
         ref_model=args.model_dir, 
-        reward_funcs=reward_len, # Dummy for pLM_GRPO as it uses dataset rewards
+        reward_funcs=reward_len, 
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
@@ -201,8 +208,29 @@ elif args.method == "weighted_DPO":
         processing_class=tokenizer,
         optimizers=(optimizer, scheduler)
     )
+elif args.method == "trl_GRPO":
+    trainer = GRPOTrainer(
+        model=model_obj,
+        reward_funcs=reward_len,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        processing_class=tokenizer,
+        optimizers=(optimizer, scheduler)
+    )
+elif args.method == "pLM_REINFORCE":
+    trainer = REINFORCE(
+        model=model_obj,
+        ref_model=args.model_dir,
+        reward_funcs=reward_len,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        processing_class=tokenizer,
+        optimizers=(optimizer, scheduler)
+    )
 
-    # Custom trainers might need this manual assignment if not handled in super
+if args.method in ["weighted_DPO"]:
     trainer.lr_scheduler = scheduler
     trainer.lr_scheduler_state = None
 

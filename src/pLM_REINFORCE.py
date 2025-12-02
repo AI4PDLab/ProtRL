@@ -124,7 +124,7 @@ class REINFORCE(GRPOTrainer):
             # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip it's
             # computation here, and use per_token_logps.detach() instead.
             if self.num_iterations > 1:
-                old_per_token_logps = self._get_per_token_logps(
+                old_per_token_logps, _ = self._get_per_token_logps_and_entropies(
                     self.model, prompt_completion_ids, attention_mask, logits_to_keep, batch_size
                 )
             else:
@@ -133,12 +133,12 @@ class REINFORCE(GRPOTrainer):
             if self.beta == 0.0:
                 ref_per_token_logps = None
             elif self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(
+                ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(
                     self.ref_model, prompt_completion_ids, attention_mask, logits_to_keep, batch_size
                 )
             else:
                 with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(
+                    ref_per_token_logps, _ = self._get_per_token_logps_and_entropies(
                         self.model, prompt_completion_ids, attention_mask, logits_to_keep, batch_size
                     )
 
@@ -169,8 +169,8 @@ class REINFORCE(GRPOTrainer):
         self._metrics[mode]["reward_std"].append(std_grouped_rewards.mean().item())
 
         # Log prompt and completion texts
-        self._textual_logs["prompt"].extend(gather_object(prompts))
-        self._textual_logs["completion"].extend(gather_object(completions))
+        self._logs["prompt"].extend(gather_object(prompts))
+        self._logs["completion"].extend(gather_object(completions))
         
         return {
             "prompt_ids": prompt_ids,
@@ -180,6 +180,7 @@ class REINFORCE(GRPOTrainer):
             "advantages": advantages,
             "old_per_token_logps": old_per_token_logps,
             "ref_per_token_logps": ref_per_token_logps,
+            "rewards": rewards,
         }
     
 

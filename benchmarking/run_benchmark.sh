@@ -119,5 +119,15 @@ for beta in 0.1 0.001; do
             run_experiment "trl_GRPO" "$beta" "$lr" "$is_level"
         done
     done
+done
+
+# 4. pLM_REINFORCE (Offline, Iterative)
+for beta in 0.1 0.001; do
+    for lr in 2e-3 2e-4 2e-5; do
+        run_experiment "pLM_REINFORCE" "$beta" "$lr" "sequence"
+    done
+done
+
+python plot_benchmark.py --results_dir $benchmark_dir
 
 echo "All benchmarks completed."
