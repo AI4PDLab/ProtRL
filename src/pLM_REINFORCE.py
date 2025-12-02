@@ -186,7 +186,7 @@ class REINFORCE(GRPOTrainer):
 
     def _compute_loss(self, model, inputs, return_outputs=False):
         """
-        REINFORCE with reverse KL penalty - actively pushes away from reference.
+        REINFORCE
         """
         # Prepare inputs
         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
@@ -200,17 +200,16 @@ class REINFORCE(GRPOTrainer):
             model, input_ids, attention_mask, logits_to_keep, prompt_ids.shape[0]
         )
         
-        # Calculate reverse KL divergence (novelty bonus)
+        # Calculate reverse KL divergence
         avg_logps = per_token_logps.mean(1)
         ref_avg_logps = inputs["ref_per_token_logps"].mean(1)
         kl_div = avg_logps - ref_avg_logps
         
-        # Augment rewards with novelty bonus
         rewards = inputs["rewards"]
-        augmented_rewards = rewards + self.beta * kl_div
-        advantages = augmented_rewards - augmented_rewards.mean()
+        #augmented_rewards = rewards #+ self.beta * kl_div
+        #advantages = augmented_rewards - augmented_rewards.mean()
         
         # REINFORCE loss
-        loss = -(advantages * avg_logps).mean()
+        loss = -(rewards * avg_logps).mean()
         
         return loss
