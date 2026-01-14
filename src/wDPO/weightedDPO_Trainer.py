@@ -1,6 +1,9 @@
-from typing import Any
+from typing import Any, Literal 
 import torch
 import torch.nn as nn
+from torch import autocast
+import torch.nn.functional as F
+from contextlib import contextmanager, nullcontext
 import logging
 from dataclasses import dataclass, field
 from collections.abc import Callable
@@ -13,7 +16,7 @@ from transformers import (
 )
 from transformers.trainer_utils import EvalLoopOutput
 
-from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_model, disable_dropout_in_model,create_model_from_path
+from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_model, disable_dropout_in_model,create_model_from_path, spearman_correlation, compute_wDPO_metrics 
 from src.wDPO.wDPO_dataCollator import wDPODataCollatorWithPadding
 from transformers.utils import is_peft_available
 import inspect
@@ -27,6 +30,7 @@ if is_peft_available():
         get_peft_model,
         prepare_model_for_kbit_training,
     )
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +72,18 @@ class wDPOTrainingArgument(TrainingArguments):
         metadata={"help": "Whether to disable dropout in the model and reference model."},
     )
 
+    # NOTE: If you set this value, greater_is_better will default to True unless the name ends with “loss”. Don’t forget to set it to False if your metric is better when lower.
+    metric_for_best_model: str | None = field(
+        default="reward_correlation", metadata={"help": "The metric to use to compare two different models."}
+    )
+
+    # Default to True since use Spearman correlation to pick best model (this should be by default when passing metric_for_best_model that doesn't start with loss - but just in case)
+    greater_is_better: bool | None = field(
+        default=True, metadata={"help": "Whether the `metric_for_best_model` should be maximized or not."}
+    )
+
+
+
 class wDPOTrainer(Trainer):
     """
     Override Trainer class to implement an emergency checkpoint that is trigger when the job is about to end by setting self.control.should_save to True when the time comes. Override both `train_step()` and `prediction_step` to check if job is about to end.
@@ -88,6 +104,11 @@ class wDPOTrainer(Trainer):
         peft_config: "PeftConfig | None" = None,
     ):
 
+        if compute_metrics is not None:
+            raise ValueError("wDPO uses a custom compute metrics function by default, please don't pass any compute_metrics")
+
+        compute_metrics = compute_wDPO_metrics 
+
         if args is None:
             output_dir = "tmp_trainer"
             logger.info(f"No `TrainingArguments` passed, using `output_dir={output_dir}`.")
@@ -95,6 +116,9 @@ class wDPOTrainer(Trainer):
 
         # this is key to pass the necessary columns
         args.remove_unused_columns = False
+
+        if not args.greater_is_better and args.load_best_model_at_end:
+            warnings.warn("WARNING: greater_is_better=False, since wDPO uses custom spearman correlation metric to pick the best model, this will result in loading the wost model at the end", UserWarning)
         # Model
         if isinstance(model, str):
             model_init_kwargs = args.model_init_kwargs or {}
@@ -146,8 +170,8 @@ class wDPOTrainer(Trainer):
 
         # Disable dropout in the model and reference model
         if args.disable_dropout:
-            disable_dropout_in_model(model)
             if self.ref_model is not None:
+                disable_dropout_in_model(model)
                 disable_dropout_in_model(self.ref_model)
 
         if args.use_liger_kernel:
@@ -243,6 +267,20 @@ class wDPOTrainer(Trainer):
 
         return model
 
+    @contextmanager
+    def null_ref_context(self):
+        """Context manager for handling null reference model (that is, peft adapter manipulation)."""
+        with (
+            self.accelerator.unwrap_model(self.model).disable_adapter()
+            if self.is_peft_model and not self.ref_adapter_name
+            else nullcontext()
+        ):
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.ref_adapter_name)
+            yield
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.model_adapter_name or "default")
+
     def get_batch_logps(self, logits: torch.FloatTensor, labels: torch.LongTensor) -> torch.FloatTensor:
         """
         Computes the log probabilities of the gold tokens (completion part).
@@ -254,33 +292,60 @@ class wDPOTrainer(Trainer):
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
 
-        # Loss mask: ignore -100
-        loss_mask = (shift_labels != -100)
+        # Loss mask: False for any -100 label (i.e., mask out prompt/padding)
+        loss_mask = (shift_labels != -100) 
 
         # Standardize labels to 0 for gathering (we will mask them out anyway)
         dummy_labels = shift_labels.clone()
         dummy_labels[dummy_labels == -100] = 0
 
-        per_token_logps = torch.gather(
-            shift_logits.log_softmax(-1), dim=2, index=dummy_labels.unsqueeze(2)
+        # compute log probabilities
+        all_log_probs = shift_logits.log_softmax(-1)
+
+        # use label to retrieve probs of generated tokens
+        gen_logps = torch.gather(
+            all_log_probs, dim=2, index=dummy_labels.unsqueeze(2)
         ).squeeze(2)
 
         # Sum log probabilities for the completion only
-        return (per_token_logps * loss_mask).sum(-1)
+        return (gen_logps * loss_mask).sum(-1)
+    
 
+    def compute_ref_logits(self, model, batch: dict[str, torch.LongTensor]) -> tuple[torch.Tensor, torch.Tensor]:
+        """Computes log probabilities of the reference model for a single padded batch of a DPO specific dataset."""
+        compte_ref_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
+        with torch.no_grad(), compte_ref_context_manager:
+            # Use Lora model
+            if self.ref_model is None:
+                with self.null_ref_context():
+                    ref_logits = model(
+                        input_ids=batch["input_ids"],
+                        attention_mask=batch["attention_mask"]
+                    ).logits
+            else:
+                # use Ref model
+                ref_logits = self.ref_model(
+                    input_ids=batch["input_ids"],
+                    attention_mask=batch["attention_mask"]
+                ).logits
+
+        return ref_logits
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+
+        pc = getattr(self.accelerator, "parallelism_config", None)
+        if pc is not None and pc.sp_backend == "deepspeed" and pc.sp_enabled:
+            raise ValueError("Sequence parallelism is currently not supported for wDPO")
+
         # 1. Get logits from both models
         policy_logits = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         ).logits
 
-        with torch.no_grad():
-            ref_logits = self.ref_model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"]
-            ).logits
+        ref_logits = self.compute_ref_logits(model,inputs)
 
         # 2. Calculate Log Probabilities for the completion part
         policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
@@ -288,15 +353,61 @@ class wDPOTrainer(Trainer):
 
         # 3. Compute the wDPO Loss
         # log_ratios: (pi_policy / pi_ref)
-        log_ratios = policy_logps - ref_logps
+        log_ratios = self.beta * (policy_logps)# - ref_logps)
 
-        # Weighted DPO formulation:
-        # Loss = -E [ reward * sigmoid(beta * log_ratio) ]
-        # or simplified weighted MLE if you are doing weighted behavior cloning
-        rewards = inputs["reward"]
+        # Weighted DPO Loss
+        rewards = inputs["reward"].detach() # just in case
 
-        # If your "reward" is a weight, you likely want to maximize (weight * log_ratio)
-        # We negate it for gradient descent
-        loss = - (rewards * (self.beta * log_ratios)).mean()
+        # softmax the rewards to get a distribution
+        weights = torch.softmax(rewards, dim=0)
+        loss = -1 * F.cross_entropy(log_ratios, weights) # multiple by -1 since want to max
+
+        ## ---- COmpute useful logging statistic ----
+        # Gather across all processes for a more stable correlation
+        # This ensures we are correlating the full macro-batch
+        _log_rations = log_ratios.detach()
+        all_log_ratios = self.accelerator.gather(_log_rations)
+        all_rewards = self.accelerator.gather(rewards)
+
+        if self.state.global_step % self.args.logging_steps == 0:
+            corr = spearman_correlation(all_log_ratios, all_rewards)
+            # Log to W&B / TensorBoard
+            self.log({"train/reward_correlation": corr.item()})
 
         return (loss, {"logits": policy_logits}) if return_outputs else loss
+
+
+    def prediction_step(
+        self,
+        model: PreTrainedModel | nn.Module,
+        inputs: dict[str, torch.Tensor | Any],
+        prediction_loss_only: bool,
+        ignore_keys: list[str] | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+
+        if ignore_keys is not None:
+            raise ValueError("wDPO currently does not support keys_to_ignore_at_inference")
+
+        prediction_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        )
+
+        with torch.no_grad(), prediction_context_manager:
+            loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
+            policy_logits = outputs["logits"]
+            ref_logits = self.compute_ref_logits(model,inputs)
+
+            policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
+            ref_logps = self.get_batch_logps(ref_logits, inputs["labels"])
+            log_ratios = (policy_logps - ref_logps)
+            rewards = inputs["reward"]
+
+        if prediction_loss_only:
+                return (loss.detach(), None, None)
+
+        # Return log_ratios as 'logits' and rewards as 'labels' 
+        # The Trainer will gather these from ALL steps and ALL GPUs
+        return (loss.detach(), log_ratios, rewards) 
+
+
+
