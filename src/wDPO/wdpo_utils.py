@@ -65,7 +65,7 @@ def spearman_correlation(x: torch.Tensor, y: torch.Tensor):
     # Extra the ranks
     x_rank = get_ranks(x)
     y_rank = get_ranks(y)
-    
+
     # Pearson correlation on ranks = Spearman colleration
     combined = torch.stack([x_rank, y_rank])
     corr = torch.corrcoef(combined)[0, 1]

@@ -6,7 +6,8 @@ import torch.nn.functional as F
 from contextlib import contextmanager, nullcontext
 import logging
 from dataclasses import dataclass, field
-from collections.abc import Callable
+from collections.abc import Callable 
+from collections import defaultdict
 from transformers import (
     Trainer,
     TrainingArguments,
@@ -20,6 +21,7 @@ from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_m
 from src.wDPO.wDPO_dataCollator import wDPODataCollatorWithPadding
 from transformers.utils import is_peft_available
 import inspect
+#from trl.trainer.utils import selective_log_softmax
 
 
 from datasets import Dataset, IterableDataset
@@ -182,6 +184,9 @@ class wDPOTrainer(Trainer):
         # Data collator
         data_collator = wDPODataCollatorWithPadding(processing_class)
 
+        # store metrics
+        self._stored_metrics = defaultdict(lambda: defaultdict(list))
+
         super().__init__(
             model=model,
             args=args,
@@ -296,19 +301,21 @@ class wDPOTrainer(Trainer):
         loss_mask = (shift_labels != -100) 
 
         # Standardize labels to 0 for gathering (we will mask them out anyway)
+        # need this since use labels for gather operations and prompt/pad have labels -100
+        # causing gather to fail, so set it to zero (i.e., first token) and then mask it out
         dummy_labels = shift_labels.clone()
         dummy_labels[dummy_labels == -100] = 0
 
-        # compute log probabilities
-        all_log_probs = shift_logits.log_softmax(-1)
-
         # use label to retrieve probs of generated tokens
-        gen_logps = torch.gather(
-            all_log_probs, dim=2, index=dummy_labels.unsqueeze(2)
-        ).squeeze(2)
+        gen_per_token_logps = torch.gather(
+            shift_logits.log_softmax(-1), dim=-1, index=dummy_labels.unsqueeze(-1)
+        ).squeeze(-1)
+
+        #gen_per_token_logps = selective_log_softmax(shift_logits, dummy_labels)
 
         # Sum log probabilities for the completion only
-        return (gen_logps * loss_mask).sum(-1)
+        # use mean to avoid grad_norm exploding
+        return (gen_per_token_logps * loss_mask).sum(-1)
     
 
     def compute_ref_logits(self, model, batch: dict[str, torch.LongTensor]) -> tuple[torch.Tensor, torch.Tensor]:
@@ -339,42 +346,73 @@ class wDPOTrainer(Trainer):
         if pc is not None and pc.sp_backend == "deepspeed" and pc.sp_enabled:
             raise ValueError("Sequence parallelism is currently not supported for wDPO")
 
-        # 1. Get logits from both models
+        compute_loss_context_manager = (
+            autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
+        ) 
+        with compute_loss_context_manager:
+            loss, metrics = self.get_batch_loss_metrics(model, inputs, train_eval="train")
+
+        #TODO: CHECK THIS!!!
+        # Make sure to move the loss to the device the original accumulating loss is at back in the `Trainer` class:
+        loss = loss.to(self.args.device)
+
+        # force log the metrics
+        self.store_metrics(metrics, train_eval="train")
+
+        if return_outputs:
+            return loss, metrics
+
+        return loss
+
+    def get_batch_loss_metrics(
+        self,
+        model: PreTrainedModel | nn.Module,
+        inputs: dict[str, list | torch.LongTensor],
+        train_eval: Literal["train", "eval"] = "train",
+    ) -> tuple[torch.Tensor, dict[str, float]]:
+
+        metrics = {}
+
+        # 1. Get logits model
         policy_logits = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         ).logits
 
+        # 2. get logits for reference model
         ref_logits = self.compute_ref_logits(model,inputs)
 
-        # 2. Calculate Log Probabilities for the completion part
+        # 3. Calculate Log Probabilities for the completion part
         policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
         ref_logps = self.get_batch_logps(ref_logits, inputs["labels"])
 
-        # 3. Compute the wDPO Loss
+        # 4. Compute the wDPO Loss
         # log_ratios: (pi_policy / pi_ref)
-        log_ratios = self.beta * (policy_logps)# - ref_logps)
+        log_ratios = self.beta * (policy_logps - ref_logps)
 
         # Weighted DPO Loss
         rewards = inputs["reward"].detach() # just in case
 
         # softmax the rewards to get a distribution
         weights = torch.softmax(rewards, dim=0)
-        loss = -1 * F.cross_entropy(log_ratios, weights) # multiple by -1 since want to max
+        loss = F.cross_entropy(log_ratios, weights) 
 
         ## ---- COmpute useful logging statistic ----
         # Gather across all processes for a more stable correlation
         # This ensures we are correlating the full macro-batch
-        _log_rations = log_ratios.detach()
-        all_log_ratios = self.accelerator.gather(_log_rations)
-        all_rewards = self.accelerator.gather(rewards)
+        all_log_ratios = self.accelerator.gather_for_metrics(log_ratios).detach()
+        all_rewards = self.accelerator.gather_for_metrics(rewards).detach()
 
-        if self.state.global_step % self.args.logging_steps == 0:
-            corr = spearman_correlation(all_log_ratios, all_rewards)
-            # Log to W&B / TensorBoard
-            self.log({"train/reward_correlation": corr.item()})
+        corr = spearman_correlation(all_log_ratios, all_rewards)
 
-        return (loss, {"logits": policy_logits}) if return_outputs else loss
+        prefix = "eval_" if train_eval == "eval" else ""
+        metrics[f"{prefix}reward_correlation"] =  corr.item()
+        metrics[f"{prefix}log_ratio"] =  all_log_ratios.mean().item()
+        metrics[f"{prefix}true_rwd"] =  all_rewards.mean().item()
+        #metrics[f"{prefix}log_ratio"] =  self.accelerator.gather_for_metrics(_log_rations).mean().item()
+        #metrics[f"{prefix}true_rwd"] =  self.accelerator.gather_for_metrics(all_rewards).mean().item()
+
+        return loss, metrics
 
 
     def prediction_step(
@@ -393,21 +431,41 @@ class wDPOTrainer(Trainer):
         )
 
         with torch.no_grad(), prediction_context_manager:
-            loss, outputs = self.compute_loss(model, inputs, return_outputs=True)
-            policy_logits = outputs["logits"]
-            ref_logits = self.compute_ref_logits(model,inputs)
-
-            policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
-            ref_logps = self.get_batch_logps(ref_logits, inputs["labels"])
-            log_ratios = (policy_logps - ref_logps)
-            rewards = inputs["reward"]
+            loss, metrics = self.get_batch_loss_metrics(model, inputs, train_eval="eval")
+        
+       # force log the metrics
+        self.store_metrics(metrics, train_eval="eval")
 
         if prediction_loss_only:
                 return (loss.detach(), None, None)
 
+        # extra log_ratios and rewards from metrics
+        log_ratios = torch.tensor(metrics["eval_log_ratio"], device=self.accelerator.device)
+        rewards = torch.tensor(metrics["eval_true_rwd"], device=self.accelerator.device)
+        
         # Return log_ratios as 'logits' and rewards as 'labels' 
-        # The Trainer will gather these from ALL steps and ALL GPUs
+        # Trainer will gather these from ALL steps and ALL GPUs
         return (loss.detach(), log_ratios, rewards) 
 
+    def store_metrics(self, metrics: dict[str, float], train_eval: Literal["train", "eval"] = "train") -> None:
+        for key, value in metrics.items():
+            self._stored_metrics[train_eval][key].append(value)
 
+    def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
+        """
+        Log `logs` on the various objects watching training, including stored metrics.
 
+        Args:
+            logs (`dict[str, float]`):
+                The values to log.
+            start_time (`float`, *optional*):
+                Start time of the training.
+        """
+        # logs either has 'loss' or 'eval_loss'
+        train_eval = "train" if "loss" in logs else "eval"
+
+        # Add averaged stored metrics to logs
+        for key, metrics in self._stored_metrics[train_eval].items():
+            logs[key] = torch.tensor(metrics).mean().item()
+        del self._stored_metrics[train_eval]
+        return super().log(logs, start_time)

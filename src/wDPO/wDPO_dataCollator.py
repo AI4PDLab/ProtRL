@@ -5,6 +5,9 @@ from transformers import PreTrainedTokenizerBase
 
 @dataclass
 class wDPODataCollatorWithPadding:
+    """
+    Data collator for wDPO to return rewards as well as mask the prompt in the lables (i.e., only need to compute logs for completion)
+    """
     tokenizer: PreTrainedTokenizerBase
     padding: bool = True
     max_length: int | None = None
@@ -31,7 +34,8 @@ class wDPODataCollatorWithPadding:
                 input_ids = [self.tokenizer.bos_token_id] + prompt_ids + completion_ids + [self.tokenizer.eos_token_id]
                 # 3. Create Labels (masking the prompt with -100)
                 # NOTE: 1+len(prompt_ids), added len of BOS token id if this has been added to the prompt
-                labels = ([-100] * (len(self.tokenizer.bos_id)+len(prompt_ids))) + completion_ids + [self.tokenizer.eos_token_id]
+                bos_len =  1 if isinstance(self.tokenizer.bos_token_id, int) else len(self.tokenizer.bos_token_id) 
+                labels = ([-100] * (bos_len+len(prompt_ids))) + completion_ids + [self.tokenizer.eos_token_id]
 
 
             all_input_ids.append(torch.tensor(input_ids))
