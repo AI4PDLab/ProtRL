@@ -18,10 +18,12 @@ from transformers import (
 from transformers.trainer_utils import EvalLoopOutput
 
 from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_model, disable_dropout_in_model,create_model_from_path, spearman_correlation, compute_wDPO_metrics 
+from src.wDPO.wdpo_utils import spearman_correlation, compute_wDPO_metrics , create_reference_model
 from src.wDPO.wDPO_dataCollator import wDPODataCollatorWithPadding
 from transformers.utils import is_peft_available
 import inspect
-#from trl.trainer.utils import selective_log_softmax
+#from trl.trainer.utils import selective_log_softmax, disable_dropout_in_model, create_model_from_path
+from trl.models.utils import prepare_deepspeed, prepare_fsdp#,  peft_module_casting_to_bf16
 
 
 from datasets import Dataset, IterableDataset
@@ -93,7 +95,7 @@ class wDPOTrainer(Trainer):
     def __init__(
         self,
         model: str | nn.Module | PreTrainedModel,
-        processing_class: PreTrainedTokenizerBase,
+        processing_class: PreTrainedTokenizerBase | None,
         ref_model: PreTrainedModel | nn.Module | str | None = None,
         args: wDPOTrainingArgument | None = None,
         train_dataset: Dataset | IterableDataset | None = None,
@@ -109,12 +111,15 @@ class wDPOTrainer(Trainer):
         if compute_metrics is not None:
             raise ValueError("wDPO uses a custom compute metrics function by default, please don't pass any compute_metrics")
 
-        compute_metrics = compute_wDPO_metrics 
+        #compute_metrics = compute_wDPO_metrics 
 
         if args is None:
             output_dir = "tmp_trainer"
             logger.info(f"No `TrainingArguments` passed, using `output_dir={output_dir}`.")
             args = wDPOTrainingArgument(output_dir=output_dir)
+
+        if processing_class is None:
+            raise ValueError("wDPO require passing a processing class (e.g., tokenizer), this is not auto-initiated like for DPOTrainer")
 
         # this is key to pass the necessary columns
         args.remove_unused_columns = False
@@ -125,13 +130,13 @@ class wDPOTrainer(Trainer):
         if isinstance(model, str):
             model_init_kwargs = args.model_init_kwargs or {}
             # Special case for DeepSpeed: requires device_map=None ("auto" fails)
-            if args.distributed_state.distributed_type == "DEEPSPEED":
+            if args.distributed_state.distributed_type in ["MULTI_GPU", "DEEPSPEED"]:
                 model_init_kwargs["device_map"] = None
             model = create_model_from_path(model, **model_init_kwargs)
         else:
             if args.model_init_kwargs is not None:
                 logger.warning(
-                    "You passed `model_init_kwargs` to the `DPOConfig`, but your model is already instantiated. "
+                    "You passed `model_init_kwargs` to the `wDPOTrainingArgument`, but your model is already instantiated. "
                     "The `model_init_kwargs` will be ignored."
                 )
 
@@ -139,7 +144,7 @@ class wDPOTrainer(Trainer):
         if isinstance(ref_model, str):
             model_init_kwargs = args.ref_model_init_kwargs or {}
             # Special case for DeepSpeed: requires device_map=None ("auto" fails)
-            if args.distributed_state.distributed_type == "DEEPSPEED":
+            if args.distributed_state.distributed_type in ["MULTI_GPU", "DEEPSPEED"]:
                 model_init_kwargs["device_map"] = None
             ref_model = create_model_from_path(ref_model, **model_init_kwargs)
         else:
@@ -200,6 +205,14 @@ class wDPOTrainer(Trainer):
             optimizer_cls_and_kwargs=optimizer_cls_and_kwargs,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
+
+        # prepare ref model based on distributed setting
+        if self.is_deepspeed_enabled:
+            self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+        elif self.is_fsdp_enabled:
+            self.ref_model = prepare_fsdp(self.ref_model, self.accelerator)
+        else:
+            self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
 
     def _prepare_peft_model(
@@ -318,7 +331,7 @@ class wDPOTrainer(Trainer):
         return (gen_per_token_logps * loss_mask).sum(-1)
     
 
-    def compute_ref_logits(self, model, batch: dict[str, torch.LongTensor]) -> tuple[torch.Tensor, torch.Tensor]:
+    def compute_ref_logits(self, batch: dict[str, torch.LongTensor]) -> tuple[torch.Tensor, torch.Tensor]:
         """Computes log probabilities of the reference model for a single padded batch of a DPO specific dataset."""
         compte_ref_context_manager = (
             autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
@@ -327,7 +340,7 @@ class wDPOTrainer(Trainer):
             # Use Lora model
             if self.ref_model is None:
                 with self.null_ref_context():
-                    ref_logits = model(
+                    ref_logits = self.model(
                         input_ids=batch["input_ids"],
                         attention_mask=batch["attention_mask"]
                     ).logits
@@ -380,7 +393,7 @@ class wDPOTrainer(Trainer):
         ).logits
 
         # 2. get logits for reference model
-        ref_logits = self.compute_ref_logits(model,inputs)
+        ref_logits = self.compute_ref_logits(inputs)
 
         # 3. Calculate Log Probabilities for the completion part
         policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])

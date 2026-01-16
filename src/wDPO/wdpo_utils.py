@@ -147,6 +147,7 @@ def create_reference_model(
 
     Returns:
         [`nn.Module`]
+
     """
     if is_deepspeed_zero3_enabled():
         raise ValueError(
