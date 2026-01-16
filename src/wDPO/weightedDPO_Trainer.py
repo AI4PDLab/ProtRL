@@ -17,13 +17,13 @@ from transformers import (
 )
 from transformers.trainer_utils import EvalLoopOutput
 
-from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_model, disable_dropout_in_model,create_model_from_path, spearman_correlation, compute_wDPO_metrics 
+#from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_model, disable_dropout_in_model,create_model_from_path, spearman_correlation, compute_wDPO_metrics 
 from src.wDPO.wdpo_utils import spearman_correlation, compute_wDPO_metrics , create_reference_model
 from src.wDPO.wDPO_dataCollator import wDPODataCollatorWithPadding
 from transformers.utils import is_peft_available
 import inspect
-#from trl.trainer.utils import selective_log_softmax, disable_dropout_in_model, create_model_from_path
-from trl.models.utils import prepare_deepspeed, prepare_fsdp#,  peft_module_casting_to_bf16
+from trl.trainer.utils import selective_log_softmax, disable_dropout_in_model, create_model_from_path
+from trl.models.utils import prepare_deepspeed, prepare_fsdp,  peft_module_casting_to_bf16
 
 
 from datasets import Dataset, IterableDataset
@@ -111,6 +111,7 @@ class wDPOTrainer(Trainer):
         if compute_metrics is not None:
             raise ValueError("wDPO uses a custom compute metrics function by default, please don't pass any compute_metrics")
 
+        # needing debugging
         #compute_metrics = compute_wDPO_metrics 
 
         if args is None:
@@ -320,11 +321,12 @@ class wDPOTrainer(Trainer):
         dummy_labels[dummy_labels == -100] = 0
 
         # use label to retrieve probs of generated tokens
-        gen_per_token_logps = torch.gather(
-            shift_logits.log_softmax(-1), dim=-1, index=dummy_labels.unsqueeze(-1)
-        ).squeeze(-1)
+        #gen_per_token_logps = torch.gather(
+        #    shift_logits.log_softmax(-1), dim=-1, index=dummy_labels.unsqueeze(-1)
+        #).squeeze(-1)
 
-        #gen_per_token_logps = selective_log_softmax(shift_logits, dummy_labels)
+        # use optimised selectivie_log_softmax to perform torch.gather(logits.log_softmax,idex=...)
+        gen_per_token_logps = selective_log_softmax(shift_logits, dummy_labels)
 
         # Sum log probabilities for the completion only
         # use mean to avoid grad_norm exploding

@@ -17,6 +17,9 @@ class wDPODataCollatorWithPadding:
         all_labels = []
         all_rewards = []
 
+        # NOTE: Currently tokenize data here on the fly, later may wanna move this loop to a prepare_dataset()
+        # function that tokenize data and create correct labels at start of training and, here, in data collator
+        # only apply padding
         for feature in features:
             # 1. Tokenize prompt and completion separately
             # We assume features['prompt'] and features['completion'] are strings
@@ -24,6 +27,7 @@ class wDPODataCollatorWithPadding:
             #completion_ids = self.tokenizer.encode(feature["completion"], add_special_tokens=False)
             prompt_ids = self.tokenizer(feature["prompt"], add_special_tokens=False)['input_ids']
             completion_ids = self.tokenizer(feature["completion"], add_special_tokens=False)['input_ids']
+
             # 2. Concatenate
             # NOTE: Chekc whether need to add BOS and always add EOS
             if prompt_ids[0] == self.tokenizer.bos_token_id:
