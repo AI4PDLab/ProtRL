@@ -91,6 +91,8 @@ class wDPOTrainingArgument(TrainingArguments):
 class wDPOTrainer(Trainer):
     """
     Override Trainer class to implement an emergency checkpoint that is trigger when the job is about to end by setting self.control.should_save to True when the time comes. Override both `train_step()` and `prediction_step` to check if job is about to end.
+
+    IMPORTANT: If you use this class to build other RL methods, this class set `use_cache=False`, for online RL, you very likely want to set this to `True`.
     """
     def __init__(
         self,
@@ -191,6 +193,7 @@ class wDPOTrainer(Trainer):
             raise ValueError("Liger kernel currently not implmented for wDPO loss")
 
         self.beta = args.beta
+
         # Need this in case of a MoE model to include aux loss
         self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
         self.aux_loss_coef = getattr(model.config, "router_aux_loss_coef", 0.0)
@@ -418,11 +421,22 @@ class wDPOTrainer(Trainer):
 
         metrics = {}
 
+        # turn off cashing of key-value, only useful for 
+        # for auto-regressive generation & waste memory
+        model_kwargs = {"use_cache": False}
+
+        # Need this for MoE
+        if self.aux_loss_enabled:
+            model_kwargs["output_router_logits"]= True
+
         # 1. Get logits model
-        policy_logits = model(
+        model_output = model(
             input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"]
-        ).logits
+            attention_mask=inputs["attention_mask"],
+            **model_kwargs,
+        )
+
+        policy_logits = model_output.logits
 
         # 2. get logits for reference model
         ref_logits = self.compute_ref_logits(inputs)
@@ -441,6 +455,9 @@ class wDPOTrainer(Trainer):
         # softmax the rewards to get a distribution
         weights = torch.softmax(rewards, dim=0)
         loss = F.cross_entropy(log_ratios, weights) 
+
+        if self.aux_loss_enabled:
+            loss = loss + self.aux_loss_coef * model_output.aux_loss
 
         ## ---- COmpute useful logging statistic ----
         # Gather across all processes for a more stable correlation
