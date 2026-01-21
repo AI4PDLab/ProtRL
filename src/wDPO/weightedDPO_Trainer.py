@@ -120,7 +120,12 @@ class wDPOTrainer(Trainer):
             args = wDPOTrainingArgument(output_dir=output_dir)
 
         if processing_class is None:
-            raise ValueError("wDPO require passing a processing class (e.g., tokenizer), this is not auto-initiated like for DPOTrainer")
+            raise ValueError("wDPO require passing a processing class (e.g., tokenizer), this is not auto-initiated, unlike for DPOTrainer")
+
+        # safety check processing class has set all the correct special tokens used by custom DataCollator
+        assert processing_class.pad_token is not None, "tokenzier pad token is None, please set one as this is used by wDPO DataCollator"
+        assert processing_class.bos_token is not None, "tokenzier bos token is None, please set one as this is used by wDPO DataCollator"
+        assert processing_class.eos_token is not None, "tokenzier eos token is None, please set one as this is used by wDPO DataCollator"
 
         # this is key to pass the necessary columns
         args.remove_unused_columns = False
@@ -157,7 +162,7 @@ class wDPOTrainer(Trainer):
         if ref_model is model:
             raise ValueError(
                 "`model` and `ref_model` cannot be the same object. If you want `ref_model` to be the "
-                "same as `model`, you can simply omit the `ref_model` argument and it will be created for you."
+                "same as `model`, you can simply omit the `ref_model` argument and this will be created for you."
             )
 
         # PEFT configuration and model wrapping
@@ -186,6 +191,16 @@ class wDPOTrainer(Trainer):
             raise ValueError("Liger kernel currently not implmented for wDPO loss")
 
         self.beta = args.beta
+        # Need this in case of a MoE model to include aux loss
+        self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
+        self.aux_loss_coef = getattr(model.config, "router_aux_loss_coef", 0.0)
+        if self.aux_loss_enabled and self.aux_loss_coef == 0.0:
+            logger.warning(
+                "You set `output_router_logits` to `True` in the model config, but `router_aux_loss_coef` is set to "
+                "`0.0`, meaning the auxiliary loss will not be used. Either set `router_aux_loss_coef` to a value "
+                "greater than `0.0`, or set `output_router_logits` to `False` if you don't want to use the auxiliary "
+                "loss.",
+            )
 
         # Data collator
         data_collator = wDPODataCollatorWithPadding(processing_class)
@@ -208,12 +223,21 @@ class wDPOTrainer(Trainer):
         )
 
         # prepare ref model based on distributed setting
-        if self.is_deepspeed_enabled:
-            self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
-        elif self.is_fsdp_enabled:
-            self.ref_model = prepare_fsdp(self.ref_model, self.accelerator)
+        if self.ref_model is None: # this is true when pefet is enabled, which means we don't have ref model (i.e., we don't need to shard etc.)
+            # safety check in case I structured code wrong
+            if not self.is_peft_model:
+                raise ValueError(
+                    "No reference model and model is not a Peft model. Something went wrong, check code!!"
+                )
         else:
-            self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
+            # NOTE: this is done only for the reference model since for model
+            # this is handled by Trainer super class
+            if self.is_deepspeed_enabled:
+                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+            elif self.is_fsdp_enabled:
+                self.ref_model = prepare_fsdp(self.ref_model, self.accelerator)
+            else:
+                self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
 
     def _prepare_peft_model(
