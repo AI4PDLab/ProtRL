@@ -222,6 +222,12 @@ class wDPOTrainer(Trainer):
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
 
+        # This ensure parent class Trainer handles loss scaling during gradient accomulation
+        # instead of assuming the model handels it (e.g., model_accepts_loss_kwargs=True)
+        # wDPO doesn't use the model computed loss, but computes its own (i.e., like DPO)
+        self.model_accepts_loss_kwargs = False
+
+
         # prepare ref model based on distributed setting
         if self.ref_model is None: # this is true when pefet is enabled, which means we don't have ref model (i.e., we don't need to shard etc.)
             # safety check in case I structured code wrong
