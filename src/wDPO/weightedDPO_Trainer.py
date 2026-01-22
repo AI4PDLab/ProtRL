@@ -39,7 +39,6 @@ if is_peft_available():
         get_peft_model,
         prepare_model_for_kbit_training,
     )
-import warnings
 
 """
 NOTE: 
@@ -86,16 +85,28 @@ class wDPOTrainingArgument(TrainingArguments):
         metadata={"help": "Whether to disable dropout in the model and reference model."},
     )
 
+    # TODO: debug this currently couldn't get it to work
     # NOTE: If you set this value, greater_is_better will default to True unless the name ends with “loss”. Don’t forget to set it to False if your metric is better when lower.
-    metric_for_best_model: str | None = field(
-        default="reward_correlation", metadata={"help": "The metric to use to compare two different models."}
+    #metric_for_best_model: str | None = field(
+    #    default="reward_correlation", metadata={"help": "The metric to use to compare two different models."}
+    #)
+
+    ### Default to True since use Spearman correlation to pick best model (this should be by default when passing metric_for_best_model that doesn't start with loss - but just in case)
+    #greater_is_better: bool | None = field(
+    #    default=True, metadata={"help": "Whether the `metric_for_best_model` should be maximized or not."}
+    #)
+
+    IRPO_regularisation: bool = field(
+        default=False,
+        metadata={"help": "Enable IRPO regularisation of likelihood of positive examples (adapted to wDPO)"}
     )
 
-    # Default to True since use Spearman correlation to pick best model (this should be by default when passing metric_for_best_model that doesn't start with loss - but just in case)
-    greater_is_better: bool | None = field(
-        default=True, metadata={"help": "Whether the `metric_for_best_model` should be maximized or not."}
-    )
-
+    IRPO_regulariser_coeff: float = field(
+            default=0.05,
+            metadata={
+                "help": "Parameter controlling \alpha weight to IRPO regulariser"
+            },
+        )
 
 
 class wDPOTrainer(Trainer):
@@ -142,8 +153,23 @@ class wDPOTrainer(Trainer):
         # this is key to pass the necessary columns
         args.remove_unused_columns = False
 
-        if not args.greater_is_better and args.load_best_model_at_end:
-            warnings.warn("WARNING: greater_is_better=False, since wDPO uses custom spearman correlation metric to pick the best model, this will result in loading the wost model at the end", UserWarning)
+        # ensure the last "reduced" batch is always drop, else Spearman correlation not reliable
+        # if last batch <3 elements
+        #args.dataloader_drop_last=True #TODO: need debugging this break evaluation loop
+
+        logger.warning("NOTE: wDPO always has dataloader_drop_last=True, this ensure Spearman correlation metrics is always reliable computed") 
+
+        if args.per_device_train_batch_size <3:
+            logger.warning("WARNING per_device_train_batch_size <3, spearman correlation training metrics will be unreliable") 
+
+        if args.per_device_eval_batch_size <3:
+            logger.warning("WARNING per_device_eval_batch_size <3, spearman correlation evaluation metrics will be unreliable") 
+
+
+        # Need debugging with custom eval metric
+        #if not args.greater_is_better and args.load_best_model_at_end:
+        #    logger.warning("WARNING: greater_is_better=False, since wDPO uses custom spearman correlation metric to pick the best model, this will result in loading the wost model at the end", UserWarning)
+
         # Model
         if isinstance(model, str):
             model_init_kwargs = args.model_init_kwargs or {}
@@ -203,6 +229,8 @@ class wDPOTrainer(Trainer):
             raise ValueError("Liger kernel currently not implmented for wDPO loss")
 
         self.beta = args.beta
+        self.IRPO_regularisation = args.IRPO_regularisation
+        self.IRPO_reg_coeff = args.IRPO_regulariser_coeff
 
         # Need this in case of a MoE model to include aux loss
         self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
@@ -543,6 +571,7 @@ class wDPOTrainer(Trainer):
         policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
         ref_logps = self.get_batch_logps(ref_logits, inputs["labels"])
 
+
         # 4. Compute the wDPO Loss
         # log_ratios: (pi_policy / pi_ref)
         log_ratios = self.beta * (policy_logps - ref_logps)
@@ -556,6 +585,12 @@ class wDPOTrainer(Trainer):
 
         if self.aux_loss_enabled:
             loss = loss + self.aux_loss_coef * model_output.aux_loss
+
+        if self.IRPO_regularisation:
+            raise ValueError("Still need to finish implementing IRPO regularisation, missing the normalisation by **completion** len()")
+            # expectation over regulatisation E_w[L^{NN}]
+            loss = loss - self.IRPO_reg_coeff * torch.sum(weights * policy_logps)
+
 
         ## ---- COmpute useful logging statistic ----
         # Gather across all processes for a more stable correlation
