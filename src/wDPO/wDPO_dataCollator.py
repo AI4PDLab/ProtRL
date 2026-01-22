@@ -3,6 +3,27 @@ from typing import Any, Dict, List
 from dataclasses import dataclass
 from transformers import PreTrainedTokenizerBase
 
+def pad_without_fast_tokenizer_warning(tokenizer, *pad_args, **pad_kwargs):
+    """
+    Pads without triggering the warning about how using the pad function is sub-optimal when using a fast tokenizer.
+    """
+
+    # To avoid errors when using Feature extractors
+    if not hasattr(tokenizer, "deprecation_warnings"):
+        return tokenizer.pad(*pad_args, **pad_kwargs)
+
+    # Save the state of the warning, then disable it
+    warning_state = tokenizer.deprecation_warnings.get("Asking-to-pad-a-fast-tokenizer", False)
+    tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
+
+    try:
+        padded = tokenizer.pad(*pad_args, **pad_kwargs)
+    finally:
+        # Restore the state of the warning.
+        tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = warning_state
+
+    return padded 
+
 @dataclass
 class wDPODataCollatorWithPadding:
     """
@@ -13,54 +34,38 @@ class wDPODataCollatorWithPadding:
     max_length: int | None = None
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
-        all_input_ids = []
-        all_labels = []
-        all_rewards = []
+        # Extract rewards; they don't get padded
+        rewards = [f.pop("reward") for f in features]
 
-        # NOTE: Currently tokenize data here on the fly, later may wanna move this loop to a prepare_dataset()
-        # function that tokenize data and create correct labels at start of training and, here, in data collator
-        # only apply padding
-        for feature in features:
-            # 1. Tokenize prompt and completion separately
-            # We assume features['prompt'] and features['completion'] are strings
-            #prompt_ids = self.tokenizer.encode(feature["prompt"], add_special_tokens=False)
-            #completion_ids = self.tokenizer.encode(feature["completion"], add_special_tokens=False)
-            prompt_ids = self.tokenizer(feature["prompt"], add_special_tokens=False)['input_ids']
-            completion_ids = self.tokenizer(feature["completion"], add_special_tokens=False)['input_ids']
+        # 2. Separate labels from features to pad them manually
+        labels = [f.pop("labels") for f in features]
 
-            # 2. Concatenate
-            # NOTE: Chekc whether need to add BOS and always add EOS
-            if prompt_ids[0] == self.tokenizer.bos_token_id:
-                input_ids =  prompt_ids + completion_ids + [self.tokenizer.eos_token_id]
-                # 3. Create Labels (masking the prompt with -100)
-                labels = ([-100] * (len(prompt_ids))) + completion_ids + [self.tokenizer.eos_token_id]
-            else:
-                input_ids = [self.tokenizer.bos_token_id] + prompt_ids + completion_ids + [self.tokenizer.eos_token_id]
-                # 3. Create Labels (masking the prompt with -100)
-                # NOTE: 1+len(prompt_ids), added len of BOS token id if this has been added to the prompt
-                bos_len =  1 if isinstance(self.tokenizer.bos_token_id, int) else len(self.tokenizer.bos_token_id) 
-                labels = ([-100] * (bos_len+len(prompt_ids))) + completion_ids + [self.tokenizer.eos_token_id]
-
-
-            all_input_ids.append(torch.tensor(input_ids))
-            all_labels.append(torch.tensor(labels))
-            all_rewards.append(feature["reward"])
-
-        # 4. Dynamic Padding
-        batch = self.tokenizer.pad(
-            {"input_ids": all_input_ids},
+        # This single call pads input_ids, labels, AND create attention_mask
+        #batch = self.tokenizer.pad(
+        #    features,
+        #    padding=self.padding,
+        #    return_tensors="pt",
+        #)
+        batch = pad_without_fast_tokenizer_warning(
+            self.tokenizer,
+            features,
             padding=self.padding,
-            max_length=self.max_length,
-            return_tensors="pt",
-            padding_side="right",
+            return_tensors="pt", # pytorch compatibility only
         )
 
-        # Pad labels manually using -100
-        # i.e., pad token labels should be -100
-        batch["labels"] = torch.nn.utils.rnn.pad_sequence(
-            all_labels, batch_first=True, padding_value=-100
+
+
+        labels = [torch.tensor(l) for l in labels]
+        # set padding labels directly to -100
+        batch['labels']= torch.nn.utils.rnn.pad_sequence(
+            labels, batch_first=True, padding_value=-100
         )
+        
+        ## use tokenizer attention mask to mask padding token labels to ensure
+        # only PAD tokens get masked
+        #if "labels" in batch:
+        #    batch["labels"][batch["attention_mask"] == 0] = -100
 
-        batch["reward"] = torch.tensor(all_rewards, dtype=torch.float32)
-
+        
+        batch["reward"] = torch.tensor(rewards, dtype=torch.float32)
         return batch

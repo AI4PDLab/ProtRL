@@ -1,3 +1,7 @@
+"""
+Class to implement wDPO based on HF transformers.Trainer class
+This class is heavily inspired from trl.DPOTrainer class.
+"""
 from typing import Any, Literal 
 import torch
 import torch.nn as nn
@@ -24,6 +28,7 @@ from transformers.utils import is_peft_available
 import inspect
 from trl.trainer.utils import selective_log_softmax, disable_dropout_in_model, create_model_from_path
 from trl.models.utils import prepare_deepspeed, prepare_fsdp,  peft_module_casting_to_bf16
+from accelerate import PartialState
 
 
 from datasets import Dataset, IterableDataset
@@ -35,6 +40,11 @@ if is_peft_available():
         prepare_model_for_kbit_training,
     )
 import warnings
+
+"""
+NOTE: 
+ - At the moment the n of workers used to pre-tokenize data is set as the same as n workers used for DataLoader, DPOTrainer has a different argument for that consider if want to do the same
+"""
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +221,12 @@ class wDPOTrainer(Trainer):
         # store metrics
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
+        ## Prepare datasets
+        if train_dataset is not None:
+            train_dataset = self._prepare_wDPO_dataset(train_dataset, processing_class, args)
+        if eval_dataset is not None:
+            eval_dataset = self._prepare_wDPO_dataset(eval_dataset, processing_class, args)
+
         super().__init__(
             model=model,
             args=args,
@@ -248,6 +264,88 @@ class wDPOTrainer(Trainer):
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
+
+    def _prepare_wDPO_dataset(self,
+                         dataset: Dataset | IterableDataset,
+                         processing_class: PreTrainedTokenizerBase,
+                         args: wDPOTrainingArgument,
+    ) -> Dataset | IterableDataset:
+        """
+        Pre-tokenizes the dataset , pre-compute lables and keeps reward as is.
+        """
+        def tokenize_fn(features):
+            """
+            Tokenize prompt, completion, create appropriate lables setting prompt to -100 and return rwd as it is
+            This tokenizer function works with both batched=True and batched=False in map()
+            """
+            # Detect if we are in batched mode or single-example mode
+            is_batched = isinstance(features["prompt"], list)
+            
+            # 1. Standardize inputs to lists for uniform processing
+            prompts = features["prompt"] if is_batched else [features["prompt"]]
+            completions = features["completion"] if is_batched else [features["completion"]]
+            reward = features["reward"] if is_batched else [features["reward"]]
+
+            # 2. Tokenize (tokenizer handles list of strings or single string automatically)
+            tokenized_prompts = processing_class(prompts, add_special_tokens=False)["input_ids"]
+            tokenized_completions = processing_class(completions, add_special_tokens=False)["input_ids"]
+            
+            bos_id = processing_class.bos_token_id
+            eos_id = processing_class.eos_token_id
+            
+            batch_input_ids = []
+            batch_labels = []
+
+            for p_ids, c_ids in zip(tokenized_prompts, tokenized_completions):
+                # Construct full_prompt: ensure BOS is present exactly once
+                if len(p_ids) > 0 and p_ids[0] == bos_id:
+                    full_prompt = p_ids
+                else:
+                    full_prompt = [bos_id] + p_ids
+                
+                # Sequence: [BOS] Prompt + Completion + [EOS]
+                input_ids = full_prompt + c_ids + [eos_id]
+                
+                # Labels: Mask prompt tokens with -100
+                # This ensures the model only learns to predict c_ids + eos_id
+                labels = ([-100] * len(full_prompt)) + c_ids + [eos_id]
+                
+                batch_input_ids.append(input_ids)
+                batch_labels.append(labels)
+
+            # 3. Return format must match input format
+            if is_batched:
+                return {
+                    "input_ids": batch_input_ids,
+                    "labels": batch_labels,
+                    "reward": reward
+                }
+            else:
+                # Return the first (and only) element for non-batched mapping
+                return {
+                    "input_ids": batch_input_ids[0],
+                    "labels": batch_labels[0],
+                    "reward": reward[0]
+                }
+
+        # Build the kwargs for the `map` function
+        map_kwargs = {}
+        if isinstance(dataset, Dataset):  # IterableDataset does not support num_proc nor writer_batch_size
+            map_kwargs["num_proc"] = args.dataloader_num_workers # set to same n. workers used for DataLoader
+            map_kwargs["writer_batch_size"] = 10
+
+        # Ensure only the main process performs the mapping first (prevents race conditions)
+        with PartialState().main_process_first():
+            dataset = dataset.map(
+                tokenize_fn,
+                remove_columns=dataset.column_names, # Remove raw text ["prompt", "completion", "activity"]
+                desc="Tokenizing dataset",
+                **map_kwargs
+            )
+        return dataset
+
+                         
+                         
 
     def _prepare_peft_model(
         self, model: PreTrainedModel, ref_model: PreTrainedModel, peft_config: Any, args: wDPOTrainingArgument
