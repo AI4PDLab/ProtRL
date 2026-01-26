@@ -234,8 +234,8 @@ class wDPOTrainer(Trainer):
 
         # Need this in case of a MoE model to include aux loss
         self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
-        self.aux_loss_coef = getattr(model.config, "router_aux_loss_coef", 0.0)
-        if self.aux_loss_enabled and self.aux_loss_coef == 0.0:
+        self.router_aux_loss_coef = getattr(model.config, "router_aux_loss_coef", 0.0)
+        if self.aux_loss_enabled and self.router_aux_loss_coef == 0.0:
             logger.warning(
                 "You set `output_router_logits` to `True` in the model config, but `router_aux_loss_coef` is set to "
                 "`0.0`, meaning the auxiliary loss will not be used. Either set `router_aux_loss_coef` to a value "
@@ -584,12 +584,15 @@ class wDPOTrainer(Trainer):
         loss = F.cross_entropy(log_ratios, weights) 
 
         if self.aux_loss_enabled:
-            loss = loss + self.aux_loss_coef * model_output.aux_loss
+            loss = loss + self.router_aux_loss_coef * model_output.aux_loss
 
         if self.IRPO_regularisation:
-            raise ValueError("Still need to finish implementing IRPO regularisation, missing the normalisation by **completion** len()")
+            # count n. of completion tokens using labels (i.e., prompt/pad labels set to -100)
+            completion_mask = (inputs["labels"] != -100)
+            completion_lengths = completion_mask.sum(dim=1).to(policy_logps.dtype).clamp(min=1) # use clamp to avoid division by 0
+            normalized_policy_logps = policy_logps / completion_lengths
             # expectation over regulatisation E_w[L^{NN}]
-            loss = loss - self.IRPO_reg_coeff * torch.sum(weights * policy_logps)
+            loss = loss - self.IRPO_reg_coeff * torch.sum(weights * normalized_policy_logps)
 
 
         ## ---- COmpute useful logging statistic ----
