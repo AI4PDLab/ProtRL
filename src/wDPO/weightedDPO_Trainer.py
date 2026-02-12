@@ -18,6 +18,7 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
     TrainerCallback,
+    DataCollator,
 )
 from transformers.trainer_utils import EvalLoopOutput
 
@@ -121,6 +122,7 @@ class wDPOTrainer(Trainer):
         processing_class: PreTrainedTokenizerBase | None,
         ref_model: PreTrainedModel | nn.Module | str | None = None,
         args: wDPOTrainingArgument | None = None,
+        data_collator: DataCollator | None = None,  # type: ignore
         train_dataset: Dataset | IterableDataset | None = None,
         eval_dataset: Dataset | IterableDataset | dict[str, Dataset | IterableDataset] | None = None,
         compute_metrics: Callable[[EvalLoopOutput], dict] | None = None,
@@ -244,7 +246,8 @@ class wDPOTrainer(Trainer):
             )
 
         # Data collator
-        data_collator = wDPODataCollatorWithPadding(processing_class)
+        if data_collator is None:
+            data_collator = wDPODataCollatorWithPadding(processing_class)
 
         # store metrics
         self._stored_metrics = defaultdict(lambda: defaultdict(list))

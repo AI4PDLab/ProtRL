@@ -69,3 +69,54 @@ class wDPODataCollatorWithPadding:
         
         batch["reward"] = torch.tensor(rewards, dtype=torch.float32)
         return batch
+
+@dataclass
+class uncertainty_wDPODataCollatorWithPadding:
+    """
+    Data collator for sampling rewards based on a reward distribution, to be used with wDPOTrainer when uncertainty_aware=True
+    """
+    tokenizer: PreTrainedTokenizerBase
+    padding: bool = True
+    max_length: int | None = None
+
+    def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
+        # Extract rewards; they don't get padded
+        rwd_statistics = [f.pop("reward_statistics") for f in features]
+
+        # convert to tensors
+        rwd_means = torch.tensor([m for m, s in rwd_statistics], dtype=torch.float32)
+        rwd_stds  = torch.tensor([s for m, s in rwd_statistics], dtype=torch.float32)
+
+        # sample
+        reward = rwd_means + rwd_stds * torch.randn_like(rwd_stds)        
+
+        # 2. Separate labels from features to pad them manually
+        labels = [f.pop("labels") for f in features]
+
+        # This single call pads input_ids, labels, AND create attention_mask
+        #batch = self.tokenizer.pad(
+        #    features,
+        #    padding=self.padding,
+        #    return_tensors="pt",
+        #)
+        batch = pad_without_fast_tokenizer_warning(
+            self.tokenizer,
+            features,
+            padding=self.padding,
+            return_tensors="pt", # pytorch compatibility only
+        )
+
+        labels = [torch.tensor(l) for l in labels]
+        # set padding labels directly to -100
+        batch['labels']= torch.nn.utils.rnn.pad_sequence(
+            labels, batch_first=True, padding_value=-100
+        )
+        
+        ## use tokenizer attention mask to mask padding token labels to ensure
+        # only PAD tokens get masked
+        #if "labels" in batch:
+        #    batch["labels"][batch["attention_mask"] == 0] = -100
+
+        batch["reward"] = reward
+        
+        return batch
