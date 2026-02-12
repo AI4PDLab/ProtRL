@@ -1,12 +1,8 @@
-"""
-Class to implement wDPO based on HF transformers.Trainer class
-This class is heavily inspired from trl.DPOTrainer class.
-"""
 from typing import Any, Literal 
+from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 from torch import autocast
-import torch.nn.functional as F
 from contextlib import contextmanager, nullcontext
 import logging
 from dataclasses import dataclass, field
@@ -23,8 +19,8 @@ from transformers import (
 from transformers.trainer_utils import EvalLoopOutput
 
 #from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_model, disable_dropout_in_model,create_model_from_path, spearman_correlation, compute_wDPO_metrics 
-from src.wDPO.wdpo_utils import spearman_correlation, compute_wDPO_metrics , create_reference_model
-from src.wDPO.wDPO_dataCollator import wDPODataCollatorWithPadding
+from src.ProtRL_utils import  compute_wDPO_metrics , create_reference_model
+from src.ProtRL_dataCollator import ProtRLDataCollatorWithPadding
 from transformers.utils import is_peft_available
 import inspect
 from trl.trainer.utils import selective_log_softmax, disable_dropout_in_model, create_model_from_path
@@ -49,7 +45,7 @@ NOTE:
 logger = logging.getLogger(__name__)
 
 @dataclass
-class wDPOTrainingArgument(TrainingArguments):
+class ProtRLTrainingArgument(TrainingArguments):
     beta: float = field(
             default=0.1,
             metadata={
@@ -97,29 +93,19 @@ class wDPOTrainingArgument(TrainingArguments):
     #    default=True, metadata={"help": "Whether the `metric_for_best_model` should be maximized or not."}
     #)
 
-    IRPO_regularisation: bool = field(
-        default=False,
-        metadata={"help": "Enable IRPO regularisation of likelihood of positive examples (adapted to wDPO)"}
-    )
-
-    IRPO_regulariser_coeff: float = field(
-            default=0.05,
-            metadata={
-                "help": "Parameter controlling \alpha weight to IRPO regulariser"
-            },
-        )
 
 
-class wDPOTrainer(Trainer):
+class ProtRLBaseTrainer(Trainer):
     """
-    IMPORTANT: If you use this class to build other RL methods, this class set `use_cache=False`, for online RL, you very likely want to set this to `True`.
+    Class to implement a base protRL_Trainer class based on HF transformers.Trainer class
+    This class is heavily inspired from trl.DPOTrainer class.
     """
     def __init__(
         self,
         model: str | nn.Module | PreTrainedModel,
         processing_class: PreTrainedTokenizerBase | None,
         ref_model: PreTrainedModel | nn.Module | str | None = None,
-        args: wDPOTrainingArgument | None = None,
+        args: ProtRLTrainingArgument | None = None,
         data_collator: DataCollator | None = None,  # type: ignore
         train_dataset: Dataset | IterableDataset | None = None,
         eval_dataset: Dataset | IterableDataset | dict[str, Dataset | IterableDataset] | None = None,
@@ -138,9 +124,10 @@ class wDPOTrainer(Trainer):
         #compute_metrics = compute_wDPO_metrics 
 
         if args is None:
-            output_dir = "tmp_trainer"
-            logger.info(f"No `TrainingArguments` passed, using `output_dir={output_dir}`.")
-            args = wDPOTrainingArgument(output_dir=output_dir)
+            # this is a fallback each RL algorithm built on top should initalise its own ProtRLTrainingArgument sub-class
+            output_dir = "tmp_basetrainer"
+            logger.info(f"No `ProtRLTrainingArgument` passed, using `output_dir={output_dir}`.")
+            args = ProtRLTrainingArgument(output_dir=output_dir)
 
         if processing_class is None:
             raise ValueError("wDPO require passing a processing class (e.g., tokenizer), this is not auto-initiated, unlike for DPOTrainer")
@@ -226,11 +213,9 @@ class wDPOTrainer(Trainer):
                 disable_dropout_in_model(self.ref_model)
 
         if args.use_liger_kernel:
-            raise ValueError("Liger kernel currently not implmented for wDPO loss")
+            raise ValueError("Liger kernel currently not implmented for ProtRL losses")
 
         self.beta = args.beta
-        self.IRPO_regularisation = args.IRPO_regularisation
-        self.IRPO_reg_coeff = args.IRPO_regulariser_coeff
 
         # Need this in case of a MoE model to include aux loss
         self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
@@ -245,16 +230,16 @@ class wDPOTrainer(Trainer):
 
         # Data collator
         if data_collator is None:
-            data_collator = wDPODataCollatorWithPadding(processing_class)
+            data_collator = ProtRLDataCollatorWithPadding(processing_class)
 
         # store metrics
         self._stored_metrics = defaultdict(lambda: defaultdict(list))
 
         ## Prepare datasets
         if train_dataset is not None:
-            train_dataset = self._prepare_wDPO_dataset(train_dataset, processing_class, args)
+            train_dataset = self._prepare_ProtRL_dataset(train_dataset, processing_class, args)
         if eval_dataset is not None:
-            eval_dataset = self._prepare_wDPO_dataset(eval_dataset, processing_class, args)
+            eval_dataset = self._prepare_ProtRL_dataset(eval_dataset, processing_class, args)
 
         super().__init__(
             model=model,
@@ -294,10 +279,10 @@ class wDPOTrainer(Trainer):
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
 
 
-    def _prepare_wDPO_dataset(self,
+    def _prepare_ProtRL_dataset(self,
                          dataset: Dataset | IterableDataset,
                          processing_class: PreTrainedTokenizerBase,
-                         args: wDPOTrainingArgument,
+                         args: ProtRLTrainingArgument,
     ) -> Dataset | IterableDataset:
         """
         Pre-tokenizes the dataset , pre-compute lables and keeps reward as is.
@@ -316,6 +301,7 @@ class wDPOTrainer(Trainer):
             reward = features["reward"] if is_batched else [features["reward"]]
 
             # 2. Tokenize (tokenizer handles list of strings or single string automatically)
+            # don't add any special tokens, this is done later
             tokenized_prompts = processing_class(prompts, add_special_tokens=False)["input_ids"]
             tokenized_completions = processing_class(completions, add_special_tokens=False)["input_ids"]
             
@@ -327,13 +313,13 @@ class wDPOTrainer(Trainer):
 
             for p_ids, c_ids in zip(tokenized_prompts, tokenized_completions):
                 # Construct full_prompt: ensure BOS is present exactly once
-                if len(p_ids) > 0 and p_ids[0] == bos_id:
+                if len(p_ids) > 0 and p_ids[0] == bos_id: # check if BOS already present 
                     full_prompt = p_ids
-                else:
+                else: # if not present add BOS token 
                     full_prompt = [bos_id] + p_ids
                 
                 # Sequence: [BOS] Prompt + Completion + [EOS]
-                input_ids = full_prompt + c_ids + [eos_id]
+                input_ids = full_prompt + c_ids + [eos_id] # alwyas add an EOS token
                 
                 # Labels: Mask prompt tokens with -100
                 # This ensures the model only learns to predict c_ids + eos_id
@@ -357,6 +343,9 @@ class wDPOTrainer(Trainer):
                     "reward": reward[0]
                 }
 
+
+        logger.warning("NOTE: ProtRLTrainer tokenization ALWAYS adds an EOS token at the end of each sequence - the BOS token is added to the prompt ONLY if not already present")
+
         # Build the kwargs for the `map` function
         map_kwargs = {}
         if isinstance(dataset, Dataset):  # IterableDataset does not support num_proc nor writer_batch_size
@@ -374,10 +363,8 @@ class wDPOTrainer(Trainer):
         return dataset
 
                          
-                         
-
     def _prepare_peft_model(
-        self, model: PreTrainedModel, ref_model: PreTrainedModel, peft_config: Any, args: wDPOTrainingArgument
+        self, model: PreTrainedModel, ref_model: PreTrainedModel, peft_config: Any, args: ProtRLTrainingArgument
     ) -> PreTrainedModel:
         """Prepares a model for PEFT training."""
         # Initialize this variable to False. This helps tracking the case when `peft_module_casting_to_bf16`
@@ -429,7 +416,7 @@ class wDPOTrainer(Trainer):
 
         return model
 
-    def _prepare_gradient_checkpointing(self, model: PreTrainedModel, args: wDPOTrainingArgument):
+    def _prepare_gradient_checkpointing(self, model: PreTrainedModel, args: ProtRLTrainingArgument):
         """Prepare the gradienting checkpointing for the model."""
         # For models that use gradient_checkpointing, we need to attach a hook that enables input
         # to explicitly have `requires_grad=True`, otherwise training will either silently
@@ -515,11 +502,37 @@ class wDPOTrainer(Trainer):
 
         return ref_logits
 
+    # define get_batch_loss_metrics as an abstract method that will always be overriden
+    # by the sub-class to implement the required RL loss for each algorithm
+    @abstractmethod
+    def get_batch_loss_metrics(
+        self, 
+        model: nn.Module,
+        inputs: dict[str, Any],
+        train_eval: str = "train"
+    ) -> tuple[torch.Tensor, dict[str, float]]:
+        """
+        Compute the loss and metrics for a batch of inputs.
+        
+        Args:
+            model: The model to compute loss for
+            inputs: Dictionary of input tensors
+            train_eval: Whether this is "train" or "eval" mode
+            
+        Returns:
+            tuple: (loss, metrics_dict)
+                - loss: torch.Tensor scalar loss value
+                - metrics_dict: Dictionary of metric names to values
+        """
+        pass
+    
+
+
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
 
         pc = getattr(self.accelerator, "parallelism_config", None)
         if pc is not None and pc.sp_backend == "deepspeed" and pc.sp_enabled:
-            raise ValueError("Sequence parallelism is currently not supported for wDPO")
+            raise ValueError("Sequence parallelism is currently not supported for ProtRL")
 
         compute_loss_context_manager = (
             autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
@@ -539,80 +552,6 @@ class wDPOTrainer(Trainer):
 
         return loss
 
-    def get_batch_loss_metrics(
-        self,
-        model: PreTrainedModel | nn.Module,
-        inputs: dict[str, list | torch.LongTensor],
-        train_eval: Literal["train", "eval"] = "train",
-    ) -> tuple[torch.Tensor, dict[str, float]]:
-
-        metrics = {}
-
-        # turn off cashing of key-value, only useful for 
-        # for auto-regressive generation & waste memory
-        model_kwargs = {"use_cache": False}
-
-        # Need this for MoE
-        if self.aux_loss_enabled:
-            model_kwargs["output_router_logits"]= True
-
-        # 1. Get logits model
-        model_output = model(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            **model_kwargs,
-        )
-
-        policy_logits = model_output.logits
-
-        # 2. get logits for reference model
-        ref_logits = self.compute_ref_logits(inputs)
-
-        # 3. Calculate Log Probabilities for the completion part
-        policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
-        ref_logps = self.get_batch_logps(ref_logits, inputs["labels"])
-
-
-        # 4. Compute the wDPO Loss
-        # log_ratios: (pi_policy / pi_ref)
-        log_ratios = self.beta * (policy_logps - ref_logps)
-
-        # Weighted DPO Loss
-        rewards = inputs["reward"].detach() # just in case
-
-        # softmax the rewards to get a distribution
-        weights = torch.softmax(rewards, dim=0)
-        loss = F.cross_entropy(log_ratios, weights) 
-
-        if self.aux_loss_enabled:
-            loss = loss + self.router_aux_loss_coef * model_output.aux_loss
-
-        if self.IRPO_regularisation:
-            # count n. of completion tokens using labels (i.e., prompt/pad labels set to -100)
-            completion_mask = (inputs["labels"] != -100)
-            completion_lengths = completion_mask.sum(dim=1).to(policy_logps.dtype).clamp(min=1) # use clamp to avoid division by 0
-            normalized_policy_logps = policy_logps / completion_lengths
-            # expectation over regulatisation E_w[L^{NN}]
-            loss = loss - self.IRPO_reg_coeff * torch.sum(weights * normalized_policy_logps)
-
-
-        ## ---- COmpute useful logging statistic ----
-        # Gather across all processes for a more stable correlation
-        # This ensures we are correlating the full macro-batch
-        all_log_ratios = self.accelerator.gather_for_metrics(log_ratios).detach()
-        all_rewards = self.accelerator.gather_for_metrics(rewards).detach()
-
-        corr = spearman_correlation(all_log_ratios, all_rewards)
-
-        prefix = "eval_" if train_eval == "eval" else ""
-        metrics[f"{prefix}reward_correlation"] =  corr.item()
-        metrics[f"{prefix}log_ratio"] =  all_log_ratios.mean().item()
-        metrics[f"{prefix}true_rwd"] =  all_rewards.mean().item()
-        #metrics[f"{prefix}log_ratio"] =  self.accelerator.gather_for_metrics(_log_rations).mean().item()
-        #metrics[f"{prefix}true_rwd"] =  self.accelerator.gather_for_metrics(all_rewards).mean().item()
-
-        return loss, metrics
-
 
     def prediction_step(
         self,
@@ -623,7 +562,7 @@ class wDPOTrainer(Trainer):
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
 
         if ignore_keys is not None:
-            raise ValueError("wDPO currently does not support keys_to_ignore_at_inference")
+            raise ValueError("ProtRL currently does not support keys_to_ignore_at_inference")
 
         prediction_context_manager = (
             autocast(self.accelerator.device.type) if self._peft_has_been_casted_to_bf16 else nullcontext()
