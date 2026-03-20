@@ -1,0 +1,150 @@
+\begin{longtable}{lrrrllll}
+\caption{test} \label{test} \\
+\toprule
+round & koff & kon & kd & sequence & expression & confidence & buffer \\
+\midrule
+\endfirsthead
+\caption[]{test} \\
+\toprule
+round & koff & kon & kd & sequence & expression & confidence & buffer \\
+\midrule
+\endhead
+\midrule
+\multicolumn{8}{r}{Continued on next page} \\
+\midrule
+\endfoot
+\bottomrule
+\endlastfoot
+round_3.3 & $9.88\times 10^{-3}$ & $1.60\times 10^{5}$ & $6.17\times 10^{-8}$ & GNSECPTSHADFCLNNGICIYIEKVDRYACKCVVGYIGERCQFSDLEWWE & high & high & compbuffer \\
+round_3.3 & $3.72\times 10^{-3}$ & $1.55\times 10^{5}$ & $2.40\times 10^{-8}$ & GNSECPTSHADFCLNNGICIYIEKVDRYACKCVVGYIGERCQFSDLEWWE & medium & high & standard \\
+round_3.1 & $2.10\times 10^{-1}$ & $6.77\times 10^{4}$ & $3.09\times 10^{-6}$ & NPSDSVAGSTRPGLAEPCPMEYYSPYCLHGECKFIKELSSYACNCVKGYLGERCEFSDLEWWE & high & low & compbuffer \\
+round_3.1 & $1.33\times 10^{-2}$ & $1.81\times 10^{4}$ & $7.35\times 10^{-7}$ & NPSDSVAGSTRPGLAEPCPMEYYSPYCLHGECKFIKELSSYACNCVKGYLGERCEFSDLEWWE & high & low & standard \\
+WT & $2.37\times 10^{-2}$ & $5.36\times 10^{4}$ & $4.42\times 10^{-7}$ & NSDSECPLSHDGYCLHDGVCMYIEALDKYACNCVVGYIGERCQYRDLKWWELR & high & high & compbuffer \\
+WT & $3.13\times 10^{-3}$ & $6.61\times 10^{4}$ & $4.73\times 10^{-8}$ & NSDSECPLSHDGYCLHDGVCMYIEALDKYACNCVVGYIGERCQYRDLKWWELR & high & high & standard \\
+control & $5.41\times 10^{-3}$ & $6.75\times 10^{4}$ & $8.01\times 10^{-8}$ & NSDSECPLSHDGYCLHGGVCMYIKAVDRYACNCVVGYIGERCQYRDLTWWGPR & high & high & compbuffer \\
+control & $9.07\times 10^{-4}$ & $7.90\times 10^{4}$ & $1.15\times 10^{-8}$ & NSDSECPLSHDGYCLHGGVCMYIKAVDRYACNCVVGYIGERCQYRDLTWWGPR & high & high & standard \\
+round_3.3 & $4.93\times 10^{-2}$ & $7.69\times 10^{4}$ & $6.41\times 10^{-7}$ & NSNADCPTSHDGYCLHDAVCFYFPEMDSYACNCVVGYVGERCQYKDLKWWDLQ & high & high & compbuffer \\
+round_3.3 & $8.93\times 10^{-3}$ & $9.73\times 10^{4}$ & $9.17\times 10^{-8}$ & NSNADCPTSHDGYCLHDAVCFYFPEMDSYACNCVVGYVGERCQYKDLKWWDLQ & high & high & standard \\
+round_3.3 & $1.28\times 10^{-2}$ & $1.17\times 10^{5}$ & $1.10\times 10^{-7}$ & NSNSECPPSHQNFCLHDGVCFYFPEMESFACKCVVGYVGERCQYSDLNWWE & high & high & compbuffer \\
+round_3.3 & $4.75\times 10^{-3}$ & $1.12\times 10^{5}$ & $4.23\times 10^{-8}$ & NSNSECPPSHQNFCLHDGVCFYFPEMESFACKCVVGYVGERCQYSDLNWWE & high & high & standard \\
+round_2 & $4.20\times 10^{-1}$ & $1.92\times 10^{5}$ & $2.19\times 10^{-6}$ & NSVERCPSSHDTYCLYGGVCFYYPETDSFACQCVNGYLGERCQYADLEWWE & high & low & compbuffer \\
+round_2 & $2.53\times 10^{-1}$ & $1.76\times 10^{5}$ & $1.43\times 10^{-6}$ & NSVERCPSSHDTYCLYGGVCFYYPETDSFACQCVNGYLGERCQYADLEWWE & high & low & standard \\
+round_2 & - & - & - & NSVETCPSTYCLHGGICMFIEAVDRYACKCVVGYVGERCQYRDLRWWS & medium & - & compbuffer \\
+round_2 & - & - & - & NSVETCPSTYCLHGGICMFIEAVDRYACKCVVGYVGERCQYRDLRWWS & medium & high & standard \\
+round_2 & - & - & - & NSVETCPSTYCLHGGICMFIEAVDRYACKCVVGYVGERCQYRDLRWWSL & medium & high & compbuffer \\
+round_2 & $2.03\times 10^{-2}$ & $1.25\times 10^{4}$ & $1.62\times 10^{-6}$ & NSVETCPSTYCLHGGICMFIEAVDRYACKCVVGYVGERCQYRDLRWWSL & medium & high & standard \\
+round_2 & $5.55\times 10^{-2}$ & $2.06\times 10^{5}$ & $2.69\times 10^{-7}$ & NSVSDCPASHETFCLNGGTCIYFQLLQEYACRCVKGYMGDRCQFSDLEWWE & high & high & compbuffer \\
+round_2 & $1.40\times 10^{-2}$ & $7.21\times 10^{4}$ & $1.94\times 10^{-7}$ & NSVSDCPASHETFCLNGGTCIYFQLLQEYACRCVKGYMGDRCQFSDLEWWE & high & high & standard \\
+control & $1.24\times 10^{-2}$ & $9.66\times 10^{4}$ & $1.29\times 10^{-7}$ & NSYSECPPSYDGYCLHDGVCRYIEALDSYACNCVVGYAGERCQYRDLRWWGRR & high & high & compbuffer \\
+control & $5.88\times 10^{-3}$ & $7.27\times 10^{4}$ & $8.09\times 10^{-8}$ & NSYSECPPSYDGYCLHDGVCRYIEALDSYACNCVVGYAGERCQYRDLRWWGRR & high & high & standard \\
+round_1 & $1.69\times 10^{-2}$ & $1.03\times 10^{5}$ & $1.64\times 10^{-7}$ & PDTIASCPSSHESYCLYQGVCFYFPEMESYACNCVSGYMGERCQFSDLQWWELQ & high & high & compbuffer \\
+round_1 & $7.33\times 10^{-3}$ & $1.66\times 10^{5}$ & $4.41\times 10^{-8}$ & PDTIASCPSSHESYCLYQGVCFYFPEMESYACNCVSGYMGERCQFSDLQWWELQ & high & high & standard \\
+round_1 & $1.74\times 10^{-2}$ & $1.00\times 10^{5}$ & $1.74\times 10^{-7}$ & PENYKSCPPSHDGYCLHGGVCMYISALQAYACNCIQGFVGERCQHSDLEWWE & high & high & compbuffer \\
+round_1 & $5.50\times 10^{-3}$ & $1.04\times 10^{5}$ & $5.31\times 10^{-8}$ & PENYKSCPPSHDGYCLHGGVCMYISALQAYACNCIQGFVGERCQHSDLEWWE & high & high & standard \\
+round_2 & $8.73\times 10^{-2}$ & $8.15\times 10^{4}$ & $1.07\times 10^{-6}$ & PNSTERCPPSHDSYCLNGGVCIFFSVLQEFACKCLQGYMGERCQHSDLEWWE & high & high & compbuffer \\
+round_2 & $1.31\times 10^{-2}$ & $6.57\times 10^{4}$ & $1.99\times 10^{-7}$ & PNSTERCPPSHDSYCLNGGVCIFFSVLQEFACKCLQGYMGERCQHSDLEWWE & high & high & standard \\
+round_3.3 & $2.19\times 10^{-2}$ & $8.79\times 10^{4}$ & $2.49\times 10^{-7}$ & PNSVESCPSSHDTYCLYDGACRFIPEMEDYSCKCVAGYIGERCQFSDLEWLELQ & high & high & compbuffer \\
+round_3.3 & $6.21\times 10^{-3}$ & $8.56\times 10^{4}$ & $7.25\times 10^{-8}$ & PNSVESCPSSHDTYCLYDGACRFIPEMEDYSCKCVAGYIGERCQFSDLEWLELQ & high & high & standard \\
+round_2 & $5.98\times 10^{-2}$ & $1.06\times 10^{5}$ & $5.66\times 10^{-7}$ & PNTVQSCPPSYDSFCLHGGVCIYIPGLEAYACRCVEGYVGERCQFSDLEWWE & high & high & compbuffer \\
+round_2 & $1.45\times 10^{-2}$ & $5.60\times 10^{4}$ & $2.59\times 10^{-7}$ & PNTVQSCPPSYDSFCLHGGVCIYIPGLEAYACRCVEGYVGERCQFSDLEWWE & medium & high & standard \\
+round_1 & $3.54\times 10^{-2}$ & $8.69\times 10^{4}$ & $4.08\times 10^{-7}$ & PSTVESCPLSHEGYCLYEGVCFYFPEMESYACNCVSGYMGERCQFSDLEWLELQ & medium & high & compbuffer \\
+round_1 & $7.99\times 10^{-3}$ & $1.32\times 10^{5}$ & $6.03\times 10^{-8}$ & PSTVESCPLSHEGYCLYEGVCFYFPEMESYACNCVSGYMGERCQFSDLEWLELQ & medium & high & standard \\
+round_3.2 & - & - & - & PTDSSTVGSCPSPAENYCLNGGICFYFPNIQDHACHCASGYIGQRCQYNDLQWWE & high & - & compbuffer \\
+round_3.2 & - & - & - & PTDSSTVGSCPSPAENYCLNGGICFYFPNIQDHACHCASGYIGQRCQYNDLQWWE & medium & - & standard \\
+round_2 & - & - & - & SDCPEAHEGFCLNGGTCIFYEVVKEYACKCLVGFIGDRCQHRDLRWWDL & medium & high & compbuffer \\
+round_2 & $1.17\times 10^{-2}$ & $3.39\times 10^{4}$ & $3.45\times 10^{-7}$ & SDCPEAHEGFCLNGGTCIFYEVVKEYACKCLVGFIGDRCQHRDLRWWDL & medium & low & standard \\
+round_3.3 & $6.97\times 10^{-3}$ & $1.04\times 10^{5}$ & $6.70\times 10^{-8}$ & SNAIERCPPSHDAYCLYGGVCFYIPEMESFACKCVKGYVGERCQFNDLEWWE & high & high & compbuffer \\
+round_3.3 & $2.98\times 10^{-3}$ & $1.13\times 10^{5}$ & $2.62\times 10^{-8}$ & SNAIERCPPSHDAYCLYGGVCFYIPEMESFACKCVKGYVGERCQFNDLEWWE & high & high & standard \\
+round_3.3 & - & - & - & SNAVEKCPPSHDDFCLYGGVCSYIVDLQTFACRCVVGYIGDRCRYKDLKWWE & high & - & compbuffer \\
+round_3.3 & - & - & - & SNAVEKCPPSHDDFCLYGGVCSYIVDLQTFACRCVVGYIGDRCRYKDLKWWE & high & - & standard \\
+round_3.3 & $7.43\times 10^{-3}$ & $7.55\times 10^{4}$ & $9.83\times 10^{-8}$ & SNAVERCPSSHQTYCLYDGVCFYIPEMESFACKCVKGYMGERCQFSDLEWWE & high & high & compbuffer \\
+round_3.3 & $1.32\times 10^{-3}$ & $1.35\times 10^{5}$ & $9.83\times 10^{-9}$ & SNAVERCPSSHQTYCLYDGVCFYIPEMESFACKCVKGYMGERCQFSDLEWWE & high & high & standard \\
+round_3.3 & $1.02\times 10^{-2}$ & $1.09\times 10^{5}$ & $9.35\times 10^{-8}$ & SNSAECPPSHDNFCLYGGVCFYIPEIESYACKCVVGYVGERCQYRDLQWWE & high & high & compbuffer \\
+round_3.3 & $7.98\times 10^{-4}$ & $1.45\times 10^{5}$ & $5.50\times 10^{-9}$ & SNSAECPPSHDNFCLYGGVCFYIPEIESYACKCVVGYVGERCQYRDLQWWE & high & high & standard \\
+round_3.2 & $3.61\times 10^{-1}$ & $1.01\times 10^{5}$ & $3.56\times 10^{-6}$ & SNSVDSCPSSHETYCLNGGICLYYDAVKDFACKCVVGFIGDRCQHRDLRWMK & high & high & compbuffer \\
+round_3.2 & $5.77\times 10^{-2}$ & $2.79\times 10^{4}$ & $2.07\times 10^{-6}$ & SNSVDSCPSSHETYCLNGGICLYYDAVKDFACKCVVGFIGDRCQHRDLRWMK & high & high & standard \\
+round_3.3 & $1.48\times 10^{-2}$ & $8.33\times 10^{3}$ & $1.77\times 10^{-6}$ & SNSVESCPASYGSFCLHDGVCTHYAILQEYACKCVVGFVGERCQYRDLRWWE & medium & low & compbuffer \\
+round_3.3 & $1.05\times 10^{-2}$ & $3.09\times 10^{4}$ & $3.40\times 10^{-7}$ & SNSVESCPASYGSFCLHDGVCTHYAILQEYACKCVVGFVGERCQYRDLRWWE & medium & low & standard \\
+round_3.3 & $1.57\times 10^{-2}$ & $1.71\times 10^{5}$ & $9.15\times 10^{-8}$ & SNSVESCPSSHDAYCLYGGVCFYIPEMESFACKCVTGYIGERCQFSDLEWWE & high & high & compbuffer \\
+round_3.3 & $4.04\times 10^{-3}$ & $9.44\times 10^{4}$ & $4.28\times 10^{-8}$ & SNSVESCPSSHDAYCLYGGVCFYIPEMESFACKCVTGYIGERCQFSDLEWWE & high & high & standard \\
+round_3.3 & $1.94\times 10^{-2}$ & $1.07\times 10^{5}$ & $1.81\times 10^{-7}$ & SNSVESCPSSHDAYCLYNGICFYFPEMESFACNCITGYMGERCQFNDLKWWE & high & high & compbuffer \\
+round_3.3 & $7.72\times 10^{-3}$ & $1.38\times 10^{5}$ & $5.58\times 10^{-8}$ & SNSVESCPSSHDAYCLYNGICFYFPEMESFACNCITGYMGERCQFNDLKWWE & high & low & standard \\
+round_3.3 & $1.98\times 10^{-2}$ & $1.51\times 10^{5}$ & $1.31\times 10^{-7}$ & SNSVESCPSSHDTYCLYNGICFYIPEMESFACNCLTGYLGERCQFSDLEWWE & high & high & compbuffer \\
+round_3.3 & $6.53\times 10^{-3}$ & $1.66\times 10^{5}$ & $3.94\times 10^{-8}$ & SNSVESCPSSHDTYCLYNGICFYIPEMESFACNCLTGYLGERCQFSDLEWWE & high & high & standard \\
+round_3.3 & $3.36\times 10^{-2}$ & $1.09\times 10^{5}$ & $3.08\times 10^{-7}$ & SNSVESCPSSHDTYCLYSGICFYFPEMDSFACNCVNGYVGERCQFSDLEWWE & high & high & compbuffer \\
+round_3.3 & $8.23\times 10^{-3}$ & $1.35\times 10^{5}$ & $6.10\times 10^{-8}$ & SNSVESCPSSHDTYCLYSGICFYFPEMDSFACNCVNGYVGERCQFSDLEWWE & high & high & standard \\
+round_3.3 & $9.91\times 10^{-3}$ & $1.23\times 10^{5}$ & $8.04\times 10^{-8}$ & SNSVESCPSTHDNYCLYKGICFYIPELESYACNCVTGYMGERCQFSDLEWWE & high & high & compbuffer \\
+round_3.3 & $1.85\times 10^{-3}$ & $9.14\times 10^{4}$ & $2.03\times 10^{-8}$ & SNSVESCPSTHDNYCLYKGICFYIPELESYACNCVTGYMGERCQFSDLEWWE & high & high & standard \\
+round_2 & $1.26\times 10^{-1}$ & $1.72\times 10^{5}$ & $7.32\times 10^{-7}$ & SNSVESCPSTHDSYCLNGGSCVFFEIVRQFACKCLSGYMGERCQFSDLEWWD & high & high & compbuffer \\
+round_2 & $1.61\times 10^{-2}$ & $1.38\times 10^{5}$ & $1.17\times 10^{-7}$ & SNSVESCPSTHDSYCLNGGSCVFFEIVRQFACKCLSGYMGERCQFSDLEWWD & high & high & standard \\
+round_3.3 & $9.01\times 10^{-2}$ & $8.41\times 10^{4}$ & $1.07\times 10^{-6}$ & SNTTERCPSSHDAYCLYEGVCFYIEAIDQYACKCMLGFVGERCQYSDLEWWE & high & high & compbuffer \\
+round_3.3 & $9.06\times 10^{-3}$ & $9.07\times 10^{4}$ & $9.99\times 10^{-8}$ & SNTTERCPSSHDAYCLYEGVCFYIEAIDQYACKCMLGFVGERCQYSDLEWWE & high & high & standard \\
+control & $1.00\times 10^{-2}$ & $1.15\times 10^{5}$ & $8.71\times 10^{-8}$ & SNTVQRCPSSHDAYCLYGGVCFYIPEMESFACKCVKGFVGERCQFSDLEWWE & high & high & compbuffer \\
+control & $1.44\times 10^{-3}$ & $1.17\times 10^{5}$ & $1.23\times 10^{-8}$ & SNTVQRCPSSHDAYCLYGGVCFYIPEMESFACKCVKGFVGERCQFSDLEWWE & high & high & standard \\
+round_3.3 & $1.34\times 10^{-2}$ & $1.51\times 10^{5}$ & $8.87\times 10^{-8}$ & SSTVQSCPSSHDTYCLYGGVCFYIPEMESFACNCLKGYMGERCQFSDLQWWE & medium & high & compbuffer \\
+round_3.3 & $4.87\times 10^{-3}$ & $1.35\times 10^{5}$ & $3.61\times 10^{-8}$ & SSTVQSCPSSHDTYCLYGGVCFYIPEMESFACNCLKGYMGERCQFSDLQWWE & medium & high & standard \\
+round_3.3 & $1.96\times 10^{-2}$ & $1.82\times 10^{5}$ & $1.08\times 10^{-7}$ & STPLNDCPPSHDAYCLYEGICFYFPEMESFACNCVKGYMGERCQFSDLKWWELQ & medium & high & compbuffer \\
+round_3.3 & $6.37\times 10^{-3}$ & $2.11\times 10^{5}$ & $3.03\times 10^{-8}$ & STPLNDCPPSHDAYCLYEGICFYFPEMESFACNCVKGYMGERCQFSDLKWWELQ & medium & low & standard \\
+round_3.1 & - & - & - & TAEEDKCPPSHESYCLFHGVCRFIEELNLYSCNCIKGFAGERCQFSDLEWWD & high & low & compbuffer \\
+round_3.1 & $3.09\times 10^{-2}$ & $1.18\times 10^{5}$ & $2.61\times 10^{-7}$ & TAEEDKCPPSHESYCLFHGVCRFIEELNLYSCNCIKGFAGERCQFSDLEWWD & high & high & standard \\
+round_2 & $9.70\times 10^{-2}$ & $9.56\times 10^{4}$ & $1.01\times 10^{-6}$ & TAPESNYCLNETVIDCPTSHDTFCLYDGTCMFIPEMEKYACNCLAGFMGDRCQFSDLQWWEMQ & high & high & compbuffer \\
+round_2 & $1.09\times 10^{-2}$ & $9.79\times 10^{4}$ & $1.11\times 10^{-7}$ & TAPESNYCLNETVIDCPTSHDTFCLYDGTCMFIPEMEKYACNCLAGFMGDRCQFSDLQWWEMQ & high & high & standard \\
+round_3.2 & - & - & - & AGTPCPLDSNYCLNGGVCLYFSIVQEYACQCVVGFVGSRCEHKDVQWWDLR & medium & - & standard \\
+round_2 & - & - & - & ANVVLDSSPLETCPSTHESYCLYGGKCRFIIQEEMPACRCMKGYDGARCE & high & - & standard \\
+round_2 & - & - & - & APDADVRLGAGNGTGSECPASYCFKNGTCIFYEPANEFACQCAQGYMGERCQFSDLEWWSR & low & - & standard \\
+round_3.1 & - & - & - & ASGERRRLDCPPSYAKWYCLNGATCSYIPELQRYGCSCVKGFMGPRCEFSDLSWWEL & medium & - & standard \\
+round_2 & - & - & - & ASGNPCPMPESYCLHGGVCFYFPDMQSFACRCVSGYIGERCQFSDLEWWA & high & - & standard \\
+round_3.2 & - & - & - & AVDSCPSTHENYCLNGAICFHVEIVNQYACNCLRGYVGARCEFKDFNWWE & medium & - & standard \\
+round_3.2 & - & - & - & CSDARTNFGEPCPMSYCLNGGICIYYQVVGKFVCRCQEGFTGRRCESKDV & high & - & standard \\
+round_3.2 & - & - & - & DSSSLVDCPPSYCLNGGICFYLKPLQEYACKHNNVCKCMPGFTGSRCESKEV & high & - & standard \\
+round_3.1 & - & - & - & DVKPLASCPEEFRNYCVHGTCRFLKKIGEPACLCKAGYLGQRCEYSDLSWEE & high & - & standard \\
+round_3.1 & - & - & - & DVNATCPPSYSNYCLHGTCRLLQDLKAPSCECDLGFYGSRCETLELISLE & high & - & standard \\
+round_3.1 & - & - & - & DVNLGSEERCPLTSYCLHGDCVYYPEMEKYACKCIKGYLGQRCEHSDLEWFE & high & - & standard \\
+round_3.1 & - & - & - & EKTDINVALGSRSYLNSCPEELTHFCIHGNCRYMEKIQEAVCRCSEGYLGTRCEYKDL & high & - & standard \\
+round_3.1 & - & - & - & GAVRSTPSLDNLKCPEEFRDYCLHGGECRFIQEQDTLSCKCASGYTGLRCEHSELLTY & none & - & standard \\
+round_3.1 & - & - & - & GEPALSTPSIDCPAKFSNYCVHGQCLFLEEKNKPACLCMQGFEGERCEFSDLEWWE & none & - & standard \\
+round_2 & - & - & - & GNSAETSRCPASHDTYCLNGGTCTFYEAVGELICQCAEGYKGKRCENKDV & high & - & standard \\
+round_3.2 & - & - & - & GPSALSHPCTAEQDGFCLNGGVCIYFEAVGQSACKCAEGYRGERCQNKDV & low & - & standard \\
+round_3.2 & - & - & - & GSPCPMADSFCLNESTAFCLNGGVCFYIQKIQEVSCSCAAGFIGKRCQHESV & medium & - & standard \\
+round_3.1 & - & - & - & GVAEPLRGRTCPSPEDFCLNGGSCIYFEPLKEYACQCVEGYEGARCDSKEL & none & - & standard \\
+round_3.1 & - & - & - & MDCPALEGVDGARLSAKCPANFCLHQGTCIYFADLEKYACQCVEGYQGSRCEHEELEWWELR & medium & - & standard \\
+round_3.1 & - & - & - & MDLEQRTARSCPPSYCFHDGKCVYLPDLREYVCNCMEGYLGARCEFNDLEWWELK & high & - & standard \\
+round_2 & - & - & - & MSTPLATLAAASTAGRPCPTEFNPYCLHDGVCIYIPELQKYACDCVRGYMGERCQFSDLQWWELR & medium & - & standard \\
+round_3.3 & - & - & - & NSDSECPLTHDGYCLHDGVCQFIKDMQEYACSCVVGYIGERCKHRDLKFWGLR & high & - & compbuffer \\
+round_3.3 & - & - & - & NSDSECPLTHDGYCLHDGVCQFIKDMQEYACSCVVGYIGERCKHRDLKFWGLR & high & - & standard \\
+round_2 & - & - & - & NSYPECPPSYEKWYCLHGTCRFVQELKDAACICHKGYMGSRCEFLTLDW & high & - & standard \\
+round_3.2 & - & - & - & NTIQCPSSHDTYCLYGGACFYFKVLQDYACQCAEGYVGERCDNSDLSWDEFR & high & - & standard \\
+round_3.2 & - & - & - & NTTSDGTGCPLSHDSYCLNGGVCLYYTPMKQWACDCVSGYTGERCQFKDL & medium & - & standard \\
+round_3.1 & - & - & - & PARDVPEPCLSGNFPLPELYSAPCPKELEHYCIHGTCRYLEGLNKPSCRCQKGYVGSRCEYYEL & none & - & standard \\
+round_3.2 & - & - & - & PARTTGHLARPCPMPESYCLNGGTCSFYSTIGKYVCQCAEGFKGQRCENQD & low & - & standard \\
+round_3.2 & - & - & - & PCPMEDFCLNGAATFFCLKGYCLRVKELQSFACQCLKGYDGERCGIQKMK & medium & - & standard \\
+round_3.1 & - & - & - & PEDAERGEGCPPSYCLNGGQCLFFETVQNYACNCVAGYIGERCEHSDLEWWEL & medium & - & standard \\
+round_2 & - & - & - & PETAAELREVSSGAARCPPTYDSFCLHQGICVFYPEVDKYACNCVKGYMGQRCQFSDLEWW & medium & - & standard \\
+round_3.1 & - & - & - & PPTEVEDGQGRIPECPESYCLNEGVCFHIPEIRAYACHCLKGYMGERCEFSDL & medium & - & standard \\
+round_3.2 & - & - & - & PSDSSLSEPCPVDGYCLNGGLCLYFEAIGKFVCKCAEGFLGERCERRHLLWYEL & high & - & standard \\
+round_3.2 & - & - & - & PTKNGHAEPCPMPDSYCLNGGICIYFSIIQEYVCNCVTGFLGPRCNHLQFID & high & - & standard \\
+round_2 & - & - & - & SGPLRSPEPATDFPGRGLPCPVDHYCLNGGRCKFLEELQEYACECVPGYIGERCQYDDLTWWA & low & - & standard \\
+round_3.3 & - & - & - & SGSTECPPSQDSYCLHNGVCMYIEPIRAYACKCVVGFTGDRCQFRDLRWRE & high & - & compbuffer \\
+round_3.3 & - & - & - & SGSTECPPSQDSYCLHNGVCMYIEPIRAYACKCVVGFTGDRCQFRDLRWRE & high & - & standard \\
+round_3.2 & - & - & - & SNASPCPMPDPCTNGETVFCLNGGTCLFYELLQEHACKCKPGFTGARCENKEI & low & - & standard \\
+round_3.2 & - & - & - & SNGTPCPMPDAHDSYCLNGGVCFHYEQLKPVACICHKGYTGERCQHNSTP & high & - & standard \\
+round_3.3 & - & - & - & SNSIEDCPSAHDSYCLYGGVCFYIPNMSKFACKCLVGYMGERCQFFDWWYSQ & high & - & compbuffer \\
+round_3.3 & - & - & - & SNSIEDCPSAHDSYCLYGGVCFYIPNMSKFACKCLVGYMGERCQFFDWWYSQ & high & - & standard \\
+round_3.3 & - & - & - & SNSVESCPSSHETFCLYDGVCFHIKDLKNYACNCLTGYMGKRCQYSDLEWWE & high & - & compbuffer \\
+round_3.3 & - & - & - & SNSVESCPSSHETFCLYDGVCFHIKDLKNYACNCLTGYMGKRCQYSDLEWWE & high & - & standard \\
+round_2 & - & - & - & SNTVERCPSAHDTYCLYGGVCFYIPELQQYACNCVPGYVGERCQYSDLEWWE & none & - & standard \\
+round_3.1 & - & - & - & SPCPEEYEHLNGYCIHGTCRFVQDLEKVACRCLKGYTGERCEHFTMLPWDS & high & - & standard \\
+round_2 & - & - & - & SPETDTINGLAKCPEEYIHFCIHGVCKFIQEQETPSCRCNKGYNGSRCE & high & - & standard \\
+round_3.2 & - & - & - & SPGPATLRSSSTTHSSCPVTDFCLNGGTCSYYETIGEMVCQCADGYKGRRCSNRD & medium & - & standard \\
+round_3.1 & - & - & - & SPGVETIAECPEKYAKCVEGYCRHMELLRQYACDCLAGYTGERCESNDLTWWADW & none & - & standard \\
+round_3.3 & - & - & - & STVDSCPSAHDSYCLYGGVCFHIAELKGYACNCVIGYVGERCQHRDLRWWDLR & medium & - & compbuffer \\
+round_3.3 & - & - & - & STVDSCPSAHDSYCLYGGVCFHIAELKGYACNCVIGYVGERCQHRDLRWWDLR & high & - & standard \\
+round_3.2 & - & - & - & TNFDCPESHYEGYCLHGGVCMHIKAVKDHACECIRGYSGEKCQKQDLYTLNW & medium & - & standard \\
+round_2 & - & - & - & TNTVDTCPSTYCLHEGICFYFSIMQSFACNCVRGYLGDRCQFSDLEWWE & high & - & standard \\
+round_3.1 & - & - & - & TPCNGEFSLNSYCLYGDLCYFMPEVEAYACERKWKCLCQSGYLGERCSYSDLEWWE & high & - & standard \\
+round_3.2 & - & - & - & TPTESSTSSVCPLDAGFCLNGGICLYYPEVQRFACKCAEGYFGERCQYEDLEWWE & high & - & standard \\
+round_3.2 & - & - & - & TSNAGPVCPLDSYCLNGGICIYFSEVQAYACKCVVGYVGDRCQHSDMEWWE & high & - & standard \\
+round_3.1 & - & - & - & TSVPSDARGLARRCPPSYCLNEGACLFIEAVNRYACKCLPNFIGERCQFSDLEWWE & medium & - & standard \\
+round_3.1 & - & - & - & TVPPELSRSGNCVKGFCLHGTCKYIEQLRAVACNCLKGYEGPRCQHKDLRWWEL & medium & - & standard \\
+\end{longtable}
+
