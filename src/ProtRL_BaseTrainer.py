@@ -142,7 +142,7 @@ class ProtRLBaseTrainer(Trainer):
 
         # ensure the last "reduced" batch is always drop, else Spearman correlation not reliable
         # if last batch <3 elements
-        #args.dataloader_drop_last=True #TODO: need debugging this break evaluation loop
+        args.dataloader_drop_last=True 
 
         logger.warning("NOTE: wDPO always has dataloader_drop_last=True, this ensure Spearman correlation metrics is always reliable computed") 
 
@@ -356,7 +356,7 @@ class ProtRLBaseTrainer(Trainer):
         with PartialState().main_process_first():
             dataset = dataset.map(
                 tokenize_fn,
-                remove_columns=dataset.column_names, # Remove raw text ["prompt", "completion", "activity"]
+                remove_columns=["prompt", "completion"],
                 desc="Tokenizing dataset",
                 **map_kwargs
             )
