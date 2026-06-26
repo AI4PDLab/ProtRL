@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 from torch import autocast
+from torch.utils.data import DataLoader
 from contextlib import contextmanager, nullcontext
 import logging
 from dataclasses import dataclass, field
@@ -17,6 +18,7 @@ from transformers import (
     DataCollator,
 )
 from transformers.trainer_utils import EvalLoopOutput
+from src.preference_sampler import PreferenceBatchSampler
 
 #from src.wDPO.wdpo_utils import peft_module_casting_to_bf16,  create_reference_model, disable_dropout_in_model,create_model_from_path, spearman_correlation, compute_wDPO_metrics 
 from src.ProtRL_utils import  compute_wDPO_metrics , create_reference_model
@@ -46,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ProtRLTrainingArgument(TrainingArguments):
+
     beta: float = field(
             default=0.1,
             metadata={
@@ -53,6 +56,15 @@ class ProtRLTrainingArgument(TrainingArguments):
                         "Higher β means less deviation from the reference model."
             },
         )
+
+    preference_col_name: str = field(
+            default="prompt",
+            metadata={
+                "help": "name of the column in dataset used to build the preferences."
+                        "Entries with the same value/ID in this specified col will be treated as a preference set (i.e., compared against each other)"
+            },
+        )
+
     # Parameters that control the model and reference model
     model_init_kwargs: dict[str, Any] | None = field(
         default=None,
@@ -133,9 +145,9 @@ class ProtRLBaseTrainer(Trainer):
             raise ValueError("wDPO require passing a processing class (e.g., tokenizer), this is not auto-initiated, unlike for DPOTrainer")
 
         # safety check processing class has set all the correct special tokens used by custom DataCollator
-        assert processing_class.pad_token is not None, "tokenzier pad token is None, please set one as this is used by wDPO DataCollator"
-        assert processing_class.bos_token is not None, "tokenzier bos token is None, please set one as this is used by wDPO DataCollator"
-        assert processing_class.eos_token is not None, "tokenzier eos token is None, please set one as this is used by wDPO DataCollator"
+        assert processing_class.pad_token is not None, "tokenzier pad token is None, please set one as this is used by the DataCollator"
+        assert processing_class.bos_token is not None, "tokenzier bos token is None, please set one as this is used by the DataCollator"
+        assert processing_class.eos_token is not None, "tokenzier eos token is None, please set one as this is used by the DataCollator"
 
         # this is key to pass the necessary columns
         args.remove_unused_columns = False
@@ -181,7 +193,7 @@ class ProtRLBaseTrainer(Trainer):
         else:
             if args.ref_model_init_kwargs is not None:
                 logger.warning(
-                    "You passed `ref_model_init_kwargs` to the `DPOConfig`, but your model is already instantiated. "
+                    "You passed `ref_model_init_kwargs` to the `ProtRLTrainingArgument`, but your model is already instantiated. "
                     "The `ref_model_init_kwargs` will be ignored."
                 )
         if ref_model is model:
@@ -215,7 +227,10 @@ class ProtRLBaseTrainer(Trainer):
         if args.use_liger_kernel:
             raise ValueError("Liger kernel currently not implmented for ProtRL losses")
 
+        # Extract beta from args
         self.beta = args.beta
+        # Extract preference comparison from args
+        self.preference_col_name = args.preference_col_name
 
         # Need this in case of a MoE model to include aux loss
         self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
@@ -277,6 +292,58 @@ class ProtRLBaseTrainer(Trainer):
                 self.ref_model = prepare_fsdp(self.ref_model, self.accelerator)
             else:
                 self.ref_model = self.accelerator.prepare_model(self.ref_model, evaluation_mode=True)
+
+    def get_train_dataloader(self) -> DataLoader:
+        """
+        Pass PreferenceBatchSampler to training DataLoader to build preferences
+        """
+        train_dataset = self.train_dataset
+        data_collator = self.data_collator
+        
+        batch_sampler = PreferenceBatchSampler(
+            dataset=train_dataset,
+            preference_col_name=self.preference_col_name,
+            batch_size=self.args.per_device_train_batch_size,
+            shuffle=True,
+            drop_last=self.args.dataloader_drop_last,
+        )
+        
+        dataloader = DataLoader(
+            train_dataset,
+            batch_sampler=batch_sampler,
+            collate_fn=data_collator,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+        )
+        
+        return self.accelerator.prepare(dataloader)
+    
+    def get_eval_dataloader(self, eval_dataset=None) -> DataLoader:
+        """
+        Pass PreferenceBatchSampler to training DataLoader to build preferences
+        """
+        if eval_dataset is None:
+            eval_dataset = self.eval_dataset
+        
+        data_collator = self.data_collator
+        
+        batch_sampler = PreferenceBatchSampler(
+            dataset=eval_dataset,
+            preference_col_name=self.preference_col_name,
+            batch_size=self.args.per_device_eval_batch_size,
+            shuffle=False,  # No shuffle for custom sampler
+            drop_last=False,
+        )
+        
+        dataloader = DataLoader(
+            eval_dataset,
+            batch_sampler=batch_sampler,
+            collate_fn=data_collator,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+        )
+        
+        return self.accelerator.prepare(dataloader)
 
 
     def _prepare_ProtRL_dataset(self,
@@ -356,7 +423,7 @@ class ProtRLBaseTrainer(Trainer):
         with PartialState().main_process_first():
             dataset = dataset.map(
                 tokenize_fn,
-                remove_columns=["prompt", "completion"],
+                remove_columns=["completion"],
                 desc="Tokenizing dataset",
                 **map_kwargs
             )
@@ -449,7 +516,7 @@ class ProtRLBaseTrainer(Trainer):
 
     def get_batch_logps(self, logits: torch.FloatTensor, labels: torch.LongTensor) -> torch.FloatTensor:
         """
-        Computes the log probabilities of the gold tokens (completion part).
+        Computes the log probabilities for each completion token.
         labels: shape (batch, seq_len) where prompt is -100
         """
         # Shift logits and labels so that tokens predict the next token
@@ -475,9 +542,9 @@ class ProtRLBaseTrainer(Trainer):
         # use optimised selectivie_log_softmax to perform torch.gather(logits.log_softmax,idex=...)
         gen_per_token_logps = selective_log_softmax(shift_logits, dummy_labels)
 
-        # Sum log probabilities for the completion only
-        # use mean to avoid grad_norm exploding
-        return (gen_per_token_logps * loss_mask).sum(-1)
+        # return per-token log probabilities for the completion only
+        # masking pad and prompt (i.e., set to zero)
+        return gen_per_token_logps * loss_mask
     
 
     def compute_ref_logits(self, batch: dict[str, torch.LongTensor]) -> tuple[torch.Tensor, torch.Tensor]:
