@@ -30,11 +30,18 @@ class PreferenceBatchSampler(Sampler):
         self.prompts = sorted(self.prompt_to_indices.keys())
 
     def set_epoch(self, epoch):
+        """
+        This is called by Trainer internally - I have checked and it correctly updates the epoch
+        """
         self.epoch = epoch
 
     def __iter__(self):
         # Local RNG seeded identically on every rank for this epoch.
         g = random.Random(self.seed + self.epoch)
+
+        #print("-----Epoch-----")
+        #print(self.epoch)
+        #print('\n')
 
         all_batches = []
         for prompt in self.prompts:

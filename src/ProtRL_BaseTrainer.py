@@ -42,6 +42,8 @@ if is_peft_available():
 """
 NOTE: 
  - At the moment the n of workers used to pre-tokenize data is set as the same as n workers used for DataLoader, DPOTrainer has a different argument for that consider if want to do the same
+ - The sampler does not support Iterable datasets, need to remove support or implement a felxible logic, where if iterable, can only compare across all preferences
+
 """
 
 logger = logging.getLogger(__name__)
@@ -120,7 +122,7 @@ class ProtRLBaseTrainer(Trainer):
         args: ProtRLTrainingArgument | None = None,
         data_collator: DataCollator | None = None,  # type: ignore
         train_dataset: Dataset | IterableDataset | None = None,
-        eval_dataset: Dataset | IterableDataset | dict[str, Dataset | IterableDataset] | None = None,
+        eval_dataset: Dataset | IterableDataset |  None = None, # don't support multiple eval
         compute_metrics: Callable[[EvalLoopOutput], dict] | None = None,
         callbacks: list[TrainerCallback] | None = None,
         optimizers: tuple[torch.optim.Optimizer | None, torch.optim.lr_scheduler.LambdaLR | None] = (None, None),
@@ -232,6 +234,12 @@ class ProtRLBaseTrainer(Trainer):
         # Extract preference comparison from args
         self.preference_col_name = args.preference_col_name
 
+        ## Extract seed
+        #self.seed = args.seed
+        #self.dataloader_num_workers = args.dataloader_num_workers,
+        #self.args.dataloader_pin_memory,
+        #args.dataloader_persistent_workers
+
         # Need this in case of a MoE model to include aux loss
         self.aux_loss_enabled = getattr(model.config, "output_router_logits", False)
         self.router_aux_loss_coef = getattr(model.config, "router_aux_loss_coef", 0.0)
@@ -299,24 +307,24 @@ class ProtRLBaseTrainer(Trainer):
         """
         train_dataset = self.train_dataset
         data_collator = self.data_collator
-        
+
         batch_sampler = PreferenceBatchSampler(
             dataset=train_dataset,
             preference_col_name=self.preference_col_name,
             batch_size=self.args.per_device_train_batch_size,
             shuffle=True,
             drop_last=self.args.dataloader_drop_last,
+            seed=self.args.seed,
         )
-        
-        dataloader = DataLoader(
-            train_dataset,
-            batch_sampler=batch_sampler,
-            collate_fn=data_collator,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-        )
-        
-        return self.accelerator.prepare(dataloader)
+
+        dataloader_params = {
+            "batch_sampler": batch_sampler,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+            "persistent_workers": self.args.dataloader_persistent_workers, 
+        }
+        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
     
     def get_eval_dataloader(self, eval_dataset=None) -> DataLoader:
         """
@@ -324,26 +332,55 @@ class ProtRLBaseTrainer(Trainer):
         """
         if eval_dataset is None:
             eval_dataset = self.eval_dataset
-        
+
         data_collator = self.data_collator
-        
+
         batch_sampler = PreferenceBatchSampler(
             dataset=eval_dataset,
             preference_col_name=self.preference_col_name,
             batch_size=self.args.per_device_eval_batch_size,
-            shuffle=False,  # No shuffle for custom sampler
-            drop_last=False,
+            shuffle=False,
+            drop_last=self.args.dataloader_drop_last,   # (the eval drop_last point from before)
+            seed=self.args.seed,
         )
-        
-        dataloader = DataLoader(
-            eval_dataset,
-            batch_sampler=batch_sampler,
-            collate_fn=data_collator,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-        )
-        
-        return self.accelerator.prepare(dataloader)
+
+        dataloader_params = {
+            "batch_sampler": batch_sampler,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+            "persistent_workers": self.args.dataloader_persistent_workers,
+        }
+
+        return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
+
+    #def get_eval_dataloader(self, eval_dataset=None) -> DataLoader:
+    #    """
+    #    Pass PreferenceBatchSampler to training DataLoader to build preferences
+    #    """
+    #    if eval_dataset is None:
+    #        eval_dataset = self.eval_dataset
+    #    
+    #    data_collator = self.data_collator
+    #    
+    #    batch_sampler = PreferenceBatchSampler(
+    #        dataset=eval_dataset,
+    #        preference_col_name=self.preference_col_name,
+    #        batch_size=self.args.per_device_eval_batch_size,
+    #        shuffle=False,  # No shuffle for custom sampler
+    #        drop_last=self.args.dataloader_drop_last,
+    #        seed=self.args.seed,
+    #    )
+    #    
+    #    dataloader = DataLoader(
+    #        eval_dataset,
+    #        batch_sampler=batch_sampler,
+    #        collate_fn=data_collator,
+    #        num_workers=self.args.dataloader_num_workers,
+    #        pin_memory=self.args.dataloader_pin_memory,
+    #    )
+    #    
+    #    return self.accelerator.prepare(dataloader)
 
 
     def _prepare_ProtRL_dataset(self,
