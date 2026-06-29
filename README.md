@@ -8,7 +8,7 @@ Currently we have implemented the following algorithms:
 - Weighted DPO (with optional IRPO regularisation)
 - GRPO (offline, advantage-weighted with per-token KL)
 
-This is the repository for the paper [*Guiding Generative Protein Language Models with Reinforcement Learning*](https://arxiv.org/abs/2412.12979). For the scripts used in the paper check the branch (experiments)
+This is the repository for the paper [*Guiding Generative Protein Language Models with Reinforcement Learning*](https://arxiv.org/abs/2412.12979). For the scripts used in the paper check the branch (experiments_v3)
 
 ## Table of Content
 - [What's New in v3](#whats-new-in-v3)

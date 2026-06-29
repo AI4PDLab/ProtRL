@@ -24,7 +24,7 @@ from .ProtRL_dataCollator import ProtRLDataCollatorWithPadding
 from transformers.utils import is_peft_available
 import inspect
 from trl.trainer.utils import selective_log_softmax, disable_dropout_in_model, create_model_from_path
-from trl.models.utils import prepare_deepspeed, prepare_fsdp,  peft_module_casting_to_bf16
+from trl.models.utils import prepare_deepspeed, prepare_fsdp
 from accelerate import PartialState
 
 
@@ -508,10 +508,6 @@ class ProtRLBaseTrainer(Trainer):
 
             # get peft model with the given config
             model = get_peft_model(model, peft_config)
-            if args.bf16 and getattr(model, "is_loaded_in_4bit", False):
-                peft_module_casting_to_bf16(model)
-                # If args.bf16 we need to explicitly call `generate` with torch amp autocast context manager
-                self._peft_has_been_casted_to_bf16 = True
 
         else:
             model = self._prepare_gradient_checkpointing(model, args)

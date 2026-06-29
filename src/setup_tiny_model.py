@@ -56,7 +56,7 @@ def main():
         intermediate_size=256,    # Reduced for speed (was 1024)
         num_hidden_layers=4,      # Reduced for speed (was 8)
         num_attention_heads=4,    # Reduced for speed (was 8)
-        max_position_embedding=128, # Reduced for speed
+        max_position_embeddings=128, # Reduced for speed
         rms_norm_eps=1e-6,
         initializer_range=0.02,
         use_cache=True,
