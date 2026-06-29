@@ -4,7 +4,7 @@
 label="M"
 model_directory="test"
 max_iteration_num=30
-PYTHON_EXEC="/users/nferruz/fstocco/Desktop/venv/bin/python"
+PYTHON_EXEC="/users/nferruz/fstocco/Desktop/ProtRL/.venv/bin/python"
 
 # Root directory (assuming script is in benchmarking/)
 ROOT_DIR=".."
@@ -20,7 +20,7 @@ echo "Saving benchmark results to $benchmark_dir"
 if [[ "$model_directory" == "test" ]]; then
     if [ ! -d "$ROOT_DIR/test/tiny" ]; then
         echo "Generating tiny model for testing..."
-        $PYTHON_EXEC "$ROOT_DIR/setup_tiny_model.py" --output_dir "$ROOT_DIR/test/tiny"
+        $PYTHON_EXEC "$ROOT_DIR/src/setup_tiny_model.py" --output_dir "$ROOT_DIR/test/tiny"
     else
         echo "Tiny model already exists at $ROOT_DIR/test/tiny"
     fi
@@ -96,23 +96,21 @@ run_experiment() {
 
 # Define Experiments
 
-# 1. pLM_GRPO (LRs: 1e-4, 1e-5, 1e-6)
-# Assuming default beta 0.01 for pLM_GRPO as not specified otherwise
+# 1. ProtRL_GRPO
 for beta in 0.1 0.001; do
     for lr in 2e-3 2e-4 2e-5; do
-        run_experiment "pLM_GRPO" "$beta" "$lr" "sequence"
+        run_experiment "ProtRL_GRPO" "$beta" "$lr" "sequence"
     done
 done
 
-# 2. weighted_DPO (Betas: 0.1, 0.01, 0.001; LRs: 1e-4, 1e-5, 1e-6)
+# 2. ProtRL_wDPO
 for beta in 0.1 0.001; do
     for lr in 2e-3 2e-4 2e-5; do
-        run_experiment "weighted_DPO" "$beta" "$lr" "sequence"
+        run_experiment "ProtRL_wDPO" "$beta" "$lr" "sequence"
     done
 done
 
-# 3. trl_GRPO (LRs: 1e-4, 1e-5, 1e-6; IS: token, sequence)
-# Assuming default beta 0.01 for trl_GRPO
+# 3. trl_GRPO (online, IS: token and sequence)
 for beta in 0.1 0.001; do
     for lr in 2e-3 2e-4 2e-5; do
         for is_level in "token" "sequence"; do
@@ -121,10 +119,10 @@ for beta in 0.1 0.001; do
     done
 done
 
-# 4. pLM_REINFORCE (Offline, Iterative)
+# 4. ProtRL_REINFORCE
 for beta in 0.1 0.001; do
     for lr in 2e-3 2e-4 2e-5; do
-        run_experiment "pLM_REINFORCE" "$beta" "$lr" "sequence"
+        run_experiment "ProtRL_REINFORCE" "$beta" "$lr" "sequence"
     done
 done
 
