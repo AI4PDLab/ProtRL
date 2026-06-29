@@ -6,9 +6,7 @@ from torch.utils.data import DataLoader
 from dataclasses import dataclass, field
 import logging
 from contextlib import contextmanager
-from src.ProtRL_BaseTrainer import ProtRLTrainingArgument, ProtRLBaseTrainer 
-from src.ProtRL_utils import spearman_correlation
-from src.preference_sampler import PreferenceBatchSampler
+from src.ProtRL_Trainer import ProtRLTrainingArgument, ProtRLBaseTrainer, spearman_correlation
 from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
@@ -35,7 +33,7 @@ logger = logging.getLogger(__name__)
 Disclaimer: GRPO is not an off-policy method (e.g., the REINFORCE-like gradient update is on-policy), after the first batch update, any other sample becomes off-policy, but this seems  to still work fine
 """
 
-class GRPOTrainer(ProtRLBaseTrainer):
+class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
     """
     Class to implement an "offline" version of GRPO (i.e., perfom GRPO update on fixed prompts)
     """
@@ -44,7 +42,7 @@ class GRPOTrainer(ProtRLBaseTrainer):
         model: str | nn.Module | PreTrainedModel,
         processing_class: PreTrainedTokenizerBase | None,
         ref_model: PreTrainedModel | nn.Module | str | None = None,
-        args: ProtRLTrainingArgument | None = None,  # Type hint shows this is wDPOTrainingArgument
+        args: ProtRLTrainingArgument | None = None,
         data_collator: DataCollator | None = None,
         train_dataset: Dataset | IterableDataset | None = None,
         eval_dataset: Dataset | IterableDataset | dict[str, Dataset | IterableDataset] | None = None,

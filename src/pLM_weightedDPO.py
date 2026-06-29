@@ -5,8 +5,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass, field
 import logging
 from contextlib import contextmanager
-from src.ProtRL_BaseTrainer import ProtRLTrainingArgument, ProtRLBaseTrainer 
-from src.ProtRL_utils import spearman_correlation
+from src.ProtRL_Trainer import ProtRLTrainingArgument, ProtRLBaseTrainer, spearman_correlation
 from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
@@ -26,7 +25,7 @@ if is_peft_available():
 logger = logging.getLogger(__name__)
 
 @dataclass
-class wDPOTrainingArgument(ProtRLTrainingArgument):
+class ProtRL_wDPOTrainingArgument(ProtRLTrainingArgument):
     IRPO_regularisation: bool = field(
         default=False,
         metadata={"help": "Enable IRPO regularisation of likelihood of positive examples (adapted to wDPO)"}
@@ -40,7 +39,7 @@ class wDPOTrainingArgument(ProtRLTrainingArgument):
         )
 
 
-class wDPOTrainer(ProtRLBaseTrainer):
+class ProtRL_wDPOTrainer(ProtRLBaseTrainer):
     """
     Class to implement wDPO algorithm
     """
@@ -49,7 +48,7 @@ class wDPOTrainer(ProtRLBaseTrainer):
         model: str | nn.Module | PreTrainedModel,
         processing_class: PreTrainedTokenizerBase | None,
         ref_model: PreTrainedModel | nn.Module | str | None = None,
-        args: wDPOTrainingArgument | None = None,  # Type hint shows this is wDPOTrainingArgument
+        args: ProtRL_wDPOTrainingArgument | None = None,  # Type hint shows this is ProtRL_wDPOTrainingArgument
         data_collator: DataCollator | None = None,
         train_dataset: Dataset | IterableDataset | None = None,
         eval_dataset: Dataset | IterableDataset | dict[str, Dataset | IterableDataset] | None = None,
@@ -63,15 +62,15 @@ class wDPOTrainer(ProtRLBaseTrainer):
 
         if args is None:
             output_dir = "tmp_wdpo_trainer"
-            logger.info(f"No `wDPOTrainingArgument` passed, using `output_dir={output_dir}`.")
-            args = wDPOTrainingArgument(output_dir=output_dir)
+            logger.info(f"No `ProtRL_wDPOTrainingArgument` passed, using `output_dir={output_dir}`.")
+            args = ProtRL_wDPOTrainingArgument(output_dir=output_dir)
 
         # Initialize parent class
         super().__init__(
             model=model,
             processing_class=processing_class,
             ref_model=ref_model,
-            args=args,  # Pass the wDPOTrainingArgument object
+            args=args,  # Pass the ProtRL_wDPOTrainingArgument object
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
@@ -83,7 +82,7 @@ class wDPOTrainer(ProtRLBaseTrainer):
             peft_config=peft_config,
         )
 
-        # add  wDPOTrainingArgument specific argument
+        # add  ProtRL_wDPOTrainingArgument specific argument
         self.IRPO_regularisation = self.args.IRPO_regularisation
         self.IRPO_reg_coeff = self.args.IRPO_regulariser_coeff
 
@@ -97,9 +96,6 @@ class wDPOTrainer(ProtRLBaseTrainer):
         """
         Implement loss for wDPO
         """
-        print(inputs)
-        exit()
-
         metrics = {}
 
         # turn off cashing of key-value, only useful for 

@@ -1,7 +1,7 @@
 #!/bin/bash -l
 
 label="M"
-model_directory="test" # put the path to your local model or a Huggingface's repository (to be called with transformer's API)
+model_directory="AI4PD/ProtGPT3-112M" # HuggingFace repo or local path; use "test" to auto-generate a tiny model for debugging
 max_iteration_num=50
 PYTHON_EXEC="/users/nferruz/fstocco/Desktop/venv/bin/python"
 
