@@ -4,7 +4,7 @@
 label="M"
 model_directory="test"
 max_iteration_num=30
-PYTHON_EXEC="/users/nferruz/fstocco/Desktop/ProtRL/.venv/bin/python"
+PYTHON_EXEC="${PYTHON_EXEC:-python3}"
 
 # Root directory (assuming script is in benchmarking/)
 ROOT_DIR=".."
@@ -126,6 +126,6 @@ for beta in 0.1 0.001; do
     done
 done
 
-python plot_benchmark.py --results_dir $benchmark_dir
+$PYTHON_EXEC plot_benchmark.py --results_dir $benchmark_dir
 
 echo "All benchmarks completed."
