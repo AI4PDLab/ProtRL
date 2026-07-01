@@ -120,7 +120,7 @@ Based on the HuggingFace `Trainer`, we have extended it to support:
 ### Quickstart Example
 
 ```python
-from src.ProtRL_BaseTrainer import ProtRLTrainingArgument
+from src.ProtRL_Trainer import ProtRLTrainingArgument
 from src.pLM_GRPO import ProtRL_GRPOTrainer
 
 training_args = ProtRLTrainingArgument(output_dir="ZymCTRL-GRPO", logging_steps=10)
@@ -201,6 +201,8 @@ For complex pipelines — where you explicitly generate, externally score, and t
 ```bash
 bash ProtRL.sh --model_dir "AI4PD/ZymCTRL" --output_dir "my_experiment"
 ```
+
+`ProtRL.sh` runs with `python3` from your `PATH` by default; override with `PYTHON_EXEC=/path/to/python bash ProtRL.sh ...` if you need a specific interpreter (e.g. a virtualenv not on `PATH`).
 
 For straightforward online rewards (e.g., sequence length), you can also use the standard HuggingFace TRL GRPO trainer directly:
 
@@ -356,7 +358,7 @@ Adding a new training algorithm to ProtRL requires implementing a **single metho
 ### Pattern
 
 ```python
-from src.ProtRL_BaseTrainer import ProtRLBaseTrainer, ProtRLTrainingArgument
+from src.ProtRL_Trainer import ProtRLBaseTrainer, ProtRLTrainingArgument
 
 class MyAlgorithmTrainer(ProtRLBaseTrainer):
 
@@ -407,7 +409,7 @@ trainer.train()
 
 ## Notes
 
-- `seq_gen.py` generates a FASTA file in the format: `>name \t perplexity \t intrinsic_reward \n sequence`
+- `seq_gen.py` generates a FASTA file in the format: `>name \t perplexity \n sequence`
 - Ranked DPO has been discontinued — it is theoretically always outperformed by weighted DPO
 - `ProtRLBaseTrainer` always sets `dataloader_drop_last=True` to ensure Spearman correlation metrics are reliable. Batch sizes below 3 will trigger a warning.
 - When using DeepSpeed ZeRO-3, `create_reference_model` will raise a `ValueError` — use a separate checkpoint as `ref_model` instead.

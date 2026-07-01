@@ -49,6 +49,13 @@ def generate_dataset(iteration_num, ec_label, output_dir):
             print(f"Error: FASTA file not found: {fasta_file}")
             return
 
+    existing_names = set()
+    if os.path.exists(output_file):
+        with open(output_file, newline="") as csvfile:
+            for row in csv.DictReader(csvfile):
+                if int(row["iteration_num"]) == iteration_num:
+                    existing_names.add(row["name"])
+
     with open(fasta_file, "r") as f:
         rep_seq = f.readlines()
 
@@ -57,7 +64,10 @@ def generate_dataset(iteration_num, ec_label, output_dir):
                 name = line.split("\t")[0].replace(">", "").replace("\n", "")
             else:
                 sequence = line.strip()
+                if name in existing_names:
+                    continue
                 append_to_csv(name, sequence, iteration_num, output_file)
+                existing_names.add(name)
 
 if __name__ == "__main__":
     main()

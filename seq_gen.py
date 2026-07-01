@@ -15,20 +15,6 @@ def calculate_perplexity(input_ids, model):
     loss = outputs.loss
     return math.exp(loss)
 
-def calculate_log_likelihood(input_ids, model, ref_model):
-    """
-    Computes implicit reward (log likelihood difference) between model and ref_model.
-    Reward = ref_loss - model_loss
-    """
-    with torch.no_grad():
-        outputs_model = model(input_ids, labels=input_ids)
-        outputs_ref_model = ref_model(input_ids, labels=input_ids)
-
-    loss = outputs_model.loss
-    ref_loss = outputs_ref_model.loss
-    implicit_reward = ref_loss - loss 
-    return implicit_reward.item()
-
 def generate_sequences(label, model, tokenizer, device, num_sequences=20, max_length=100):
     """
     Generates sequences using the model.
@@ -66,25 +52,21 @@ def main():
     if iteration_num <= 1:
         model_name = args.model_dir
     else:
-        # Check output_dir first for the PREVIOUS iteration's model
+        # Check output_dir for the PREVIOUS iteration's model
         prev_iteration = iteration_num - 1
         prev_model_dir = os.path.join(args.output_dir, f'output_iteration{prev_iteration}')
-        if os.path.exists(prev_model_dir):
-            model_name = prev_model_dir
-        else:
-            # Fallback
-            model_name = f'./output_iteration{prev_iteration}'
+        if not os.path.exists(prev_model_dir):
+            raise FileNotFoundError(
+                f"Expected a checkpoint from iteration {prev_iteration} at '{prev_model_dir}', "
+                f"but it doesn't exist. This usually means iteration {prev_iteration} crashed "
+                f"before it could save a model."
+            )
+        model_name = prev_model_dir
 
     print(f"Loading model and tokenizer from {model_name}...")
-    try:
-        # Tokenizer is usually loaded from the base model directory
-        tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
-        model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
-        # Reference model is loaded from the base model directory
-        ref_model = AutoModelForCausalLM.from_pretrained(args.model_dir).to(device) 
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        return
+    # Tokenizer is usually loaded from the base model directory
+    tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+    model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
 
     print("Model loaded.")
 
@@ -102,12 +84,10 @@ def main():
         output_ids_batch = output_ids.unsqueeze(0)
         
         ppl = calculate_perplexity(output_ids_batch, model)
-        reward = calculate_log_likelihood(output_ids_batch, model, ref_model)
-        
+
         results.append({
             "sequence": sequence_text,
             "perplexity": ppl,
-            "reward": reward
         })
 
     # Sort by perplexity (lower is better)
@@ -119,7 +99,7 @@ def main():
     print(f"Writing results to {output_filename}")
     with open(output_filename, "w") as f:
         for i, res in enumerate(results):
-            header = f">{args.label}_{i}\tppl={res['perplexity']:.4f}\treward={res['reward']:.4f}"
+            header = f">{args.label}_{i}\tppl={res['perplexity']:.4f}"
             f.write(f"{header}\n{res['sequence']}\n")
 
     print("Done.")
