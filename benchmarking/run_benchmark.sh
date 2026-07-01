@@ -97,22 +97,22 @@ run_experiment() {
 # Define Experiments
 
 # 1. ProtRL_GRPO
-for beta in 0.1 0.001; do
-    for lr in 2e-3 2e-4 2e-5; do
+for beta in 0.1; do
+    for lr in 2e-4; do
         run_experiment "ProtRL_GRPO" "$beta" "$lr" "sequence"
     done
 done
 
 # 2. ProtRL_wDPO
-for beta in 0.1 0.001; do
-    for lr in 2e-3 2e-4 2e-5; do
+for beta in 0.1; do
+    for lr in 2e-4; do
         run_experiment "ProtRL_wDPO" "$beta" "$lr" "sequence"
     done
 done
 
 # 3. trl_GRPO (online, IS: token and sequence)
-for beta in 0.1 0.001; do
-    for lr in 2e-3 2e-4 2e-5; do
+for beta in 0.1; do
+    for lr in 2e-4; do
         for is_level in "token" "sequence"; do
             run_experiment "trl_GRPO" "$beta" "$lr" "$is_level"
         done
@@ -120,8 +120,8 @@ for beta in 0.1 0.001; do
 done
 
 # 4. ProtRL_REINFORCE
-for beta in 0.1 0.001; do
-    for lr in 2e-3 2e-4 2e-5; do
+for beta in 0.1; do
+    for lr in 2e-4; do
         run_experiment "ProtRL_REINFORCE" "$beta" "$lr" "sequence"
     done
 done
