@@ -16,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.ProtRL_Trainer import ProtRLTrainingArgument, checkpoint_load, load_optimizer_scheduler, save_config
 from src.pLM_GRPO import ProtRL_GRPOTrainer
-from src.pLM_weightedDPO import ProtRL_wDPOTrainer
-from src.pLM_REINFORCE import ProtRL_REINFORCETrainer
+from src.pLM_weightedDPO import ProtRL_wDPOTrainer, ProtRL_wDPOTrainingArgument
+from src.pLM_REINFORCE import ProtRL_REINFORCETrainer, ProtRL_REINFORCETrainingArgument
 
 # Argument parsing
 parser = argparse.ArgumentParser()
@@ -154,7 +154,12 @@ if args.method == "trl_GRPO":
         importance_sampling_level=CONFIG["importance_sampling"],
     )
 else:
-    training_args = ProtRLTrainingArgument(
+    training_args_cls = {
+        "ProtRL_GRPO": ProtRLTrainingArgument,
+        "ProtRL_wDPO": ProtRL_wDPOTrainingArgument,
+        "ProtRL_REINFORCE": ProtRL_REINFORCETrainingArgument,
+    }[args.method]
+    training_args = training_args_cls(
         output_dir=output_model_dir,
         logging_steps=100,
         beta=CONFIG["beta"],
