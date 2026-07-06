@@ -6,7 +6,8 @@
 A Reinforcement Learning (RL) framework for autoregressive protein Language Models (pLMs).
 Currently we have implemented the following algorithms:
 - Weighted DPO (with optional IRPO regularisation)
-- GRPO (offline, advantage-weighted with per-token KL)
+- GRPO 
+- REINFORCE
 
 This is the repository for the paper [*Guiding Generative Protein Language Models with Reinforcement Learning*](https://arxiv.org/abs/2412.12979). For the scripts used in the paper check the branch (experiments_v3)
 

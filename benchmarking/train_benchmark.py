@@ -67,9 +67,25 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
     set_seed(seed)
 
+generation_log = []
+
 def reward_len(completions, **kwargs):
-    """Reward function for trl_GRPO: penalize deviation from length 50."""
-    return [float(-abs(50 - len(c))) for c in completions]
+    """Reward function for trl_GRPO: penalize deviation from length 50.
+
+    Also logs every generated completion (trl doesn't otherwise persist
+    them), so trl_GRPO runs end up with a logs.csv like the offline methods.
+    """
+    trainer_state = kwargs.get("trainer_state")
+    step = trainer_state.global_step if trainer_state is not None else 0
+    for i, completion in enumerate(completions):
+        sequence = completion.replace(" ", "")
+        generation_log.append({
+            "name": f"step{step}_{i}",
+            "sequence": sequence,
+            "length": len(sequence),
+            "iteration_num": step,
+        })
+    return [float(-abs(100 - len(c.replace(" ", "")))) for c in completions]
 
 def generate_dataset(iteration_num, label):
     """Generates dataset from logs.csv (used by offline methods)."""
@@ -85,7 +101,7 @@ def generate_dataset(iteration_num, label):
         {
             "prompt": label,
             "completion": entry["sequence"],
-            "reward": float(-abs(50 - len(entry["sequence"]))),
+            "reward": float(-abs(100 - len(entry["sequence"]))),
         }
         for _, entry in df.iterrows()
     ]
@@ -149,8 +165,9 @@ if args.method == "trl_GRPO":
         save_strategy="steps",
         eval_steps=500,
         save_total_limit=1,
-        save_steps=5,
-        num_generations=8,
+        save_steps=500,
+        max_steps=CONFIG["max_iteration_num"],
+        num_generations=32,
         importance_sampling_level=CONFIG["importance_sampling"],
     )
 else:
@@ -217,4 +234,8 @@ elif args.method == "ProtRL_REINFORCE":
 
 trainer.train()
 trainer.save_model()
+
+if args.method == "trl_GRPO":
+    pd.DataFrame(generation_log).to_csv(os.path.join(args.output_dir, "logs.csv"), index=False)
+
 torch.cuda.empty_cache()

@@ -10,22 +10,22 @@ def main():
     parser.add_argument("--results_dir", type=str, default="results", help="Directory containing benchmark results")
     args = parser.parse_args()
 
-    
+
     print(f"Scanning {args.results_dir} for logs...")
-    
+
     all_data = []
-    
+
     # Walk through the directory to find logs.csv
     for root, dirs, files in os.walk(args.results_dir):
         if "logs.csv" in files:
             logs_path = os.path.join(root, "logs.csv")
             run_id = os.path.basename(root) # The folder name is the run_id
-            
+
             try:
                 df = pd.read_csv(logs_path)
                 df["run_id"] = run_id
-                
-                
+
+
                 all_data.append(df)
             except Exception as e:
                 print(f"Error reading {logs_path}: {e}")
@@ -35,20 +35,22 @@ def main():
         return
 
     combined_df = pd.concat(all_data, ignore_index=True)
-    
+
     # Methods: pLM_GRPO, weighted_DPO, trl_GRPO
     def get_method(run_id):
-        if run_id.startswith("pLM_GRPO"):
-            return "pLM_GRPO"
-        elif run_id.startswith("weighted_DPO"):
-            return "weighted_DPO"
+        if run_id.startswith("ProtRL_GRPO"):
+            return "ProtRL_GRPO"
+        elif run_id.startswith("ProtRL_wDPO"):
+            return "ProtRL_wDPO"
+        elif run_id.startswith("ProtRL_REINFORCE"):
+            return "ProtRL_REINFORCE"
         elif run_id.startswith("trl_GRPO"):
             return "trl_GRPO"
         else:
             return "other"
 
     combined_df["method"] = combined_df["run_id"].apply(get_method)
-    
+
     # Save combined logs
     combined_csv = os.path.join(args.results_dir, "benchmark_combined_logs.csv")
     combined_df.to_csv(combined_csv, index=False)
@@ -59,10 +61,10 @@ def main():
     g.add_legend()
     g.set_titles("{col_name}")
     g.set_axis_labels("Iteration", "Sequence Length")
-    
+
     plt.subplots_adjust(top=0.9)
     g.fig.suptitle("Sequence Length over Iterations by Method")
-    
+
     output_plot = os.path.join(args.results_dir, "benchmark_comparison.png")
     plt.savefig(output_plot)
     print(f"Plot saved to {output_plot}")
