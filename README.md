@@ -100,6 +100,10 @@ If you already have a pre-existing CSV dataset containing columns `prompt`, `seq
 python train_exp.py --model_dir "AI4PD/ProtGPT3-112M" --csv "my_dataset.csv"
 ```
 
+For ProtGPT3 the `prompt` column must be the direction token (`"1"` forward / `"2"` reverse),
+and `sequence` the raw amino-acid completion — see the ProtGPT3 prompting note in
+[§7 Dataset Format](#7-dataset-format). `example/fake_dataset.csv` is a ready-to-use example.
+
 ---
 
 ## 6. Trainer API Usage
@@ -170,24 +174,29 @@ trainer.train()
 
 The trainers expect Hugging Face `Dataset` inputs containing:
 * `prompt`: The conditioning tag, which varies depending on the model and target task.
-  * E.g. `"M"` for ProtGPT3 (representing the starting Methionine amino acid).
-  * E.g. `""` (empty string) for unconditional generation.
+  * E.g. `"1"` for ProtGPT3 — its **direction token** (`"1"` = forward N→C, `"2"` = reverse). ProtGPT3 was trained to condition on this, so it is the correct prompt (not `"M"`).
   * E.g. `"<EC:1.1.1.1>"` or other specific function tags for guided protein language models (like ZymCTRL).
 * `completion`: The **raw** amino-acid sequence, e.g. `"HGEGTFTSDLSKQME"`.
 * `reward`: A numerical score (higher is better).
 
 Example entry:
 ```json
-{"prompt": "M", "completion": "HGEGTFTSDLSKQME", "reward": 1.0}
+{"prompt": "1", "completion": "HGEGTFTSDLSKQME", "reward": 1.0}
 ```
 
+> ⚠️ **ProtGPT3 prompting — get these two things right or generation degenerates:**
+> 1. **Prompt with the direction token** (`"1"` forward / `"2"` reverse), not `"M"`.
+> 2. **Add a leading BOS token.** For generation load the tokenizer with `add_bos_token=True`
+>    (`AutoTokenizer.from_pretrained(model, add_bos_token=True, add_eos_token=False)`); the RL
+>    trainer adds BOS to the prompt for you. Generating from a BOS-less / direction-token-less
+>    prompt drives the model out-of-distribution and yields repetitive junk like `MMMKKK...GGGG`.
+>
 > ⚠️ **Pass the raw sequence — do not insert spaces between residues.**
-> ProtGPT3-112M (and the other character-level pLMs used here) tokenize **one token per
-> residue** and have no space token. The trainer tokenizes the `completion` for you, so a
-> space-separated string like `"H G E G T"` would map every space to `[UNK]`, and the
-> training tokens would no longer match what the model generates — silently breaking the
-> RL signal. When you decode generated sequences the tokenizer *displays* spaces between
-> residues; strip them with `.replace(" ", "")` before storing or reusing them.
+> ProtGPT3 (and the other character-level pLMs used here) tokenize **one token per residue**
+> and have no space token. The trainer tokenizes the `completion` for you, so a space-separated
+> string like `"H G E G T"` would map every space to `[UNK]`, silently breaking the RL signal.
+> When you decode generated sequences the tokenizer *displays* spaces between residues; strip
+> them with `.replace(" ", "")` before storing or reusing them.
 
 ---
 

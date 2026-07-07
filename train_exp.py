@@ -2,6 +2,10 @@
 One-shot offline training on a pre-scored CSV file.
 
 CSV expected columns: prompt, sequence, reward
+  - prompt:   the conditioning tag. For ProtGPT3 use its DIRECTION token, "1" (forward,
+              N->C) or "2" (reverse) - NOT "M". The trainer prepends BOS to the prompt.
+  - sequence: the raw amino-acid completion (no spaces, no leading direction token).
+  - reward:   numerical score (higher is better).
 """
 import os
 import argparse
@@ -58,7 +62,9 @@ def format_sequence(sequence):
 def build_dataset():
     df = pd.read_csv(args.csv)
     rows = [
-        {"prompt": row["prompt"], "completion": format_sequence(row["sequence"]), "reward": float(row["reward"])}
+        # str(): a direction-token prompt like "1" is read back from CSV as an int by pandas;
+        # the tokenizer requires a string.
+        {"prompt": str(row["prompt"]), "completion": format_sequence(row["sequence"]), "reward": float(row["reward"])}
         for _, row in df.iterrows()
     ]
     return Dataset.from_list(rows)

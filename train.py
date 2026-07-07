@@ -75,8 +75,21 @@ def generate_dataset(iteration_num, label):
         raise FileNotFoundError(f"logs.csv not found in {args.output_dir}")
     df = pd.read_csv(logs_path)
     df = df[df["iteration_num"] == iteration_num]
+
+    def build_completion(seq):
+        # The stored sequence includes the prompt (generation is prompted with [BOS]+label,
+        # and the label - e.g. leading "M" - ends up in the decoded sequence). The trainer
+        # re-adds [BOS]+prompt, so strip the prompt here to avoid duplicating it and to make
+        # the training tokens exactly match what the model generated: [BOS, M, <rest>, EOS].
+        seq = format_sequence(seq, tokenizer)
+        if label and seq.startswith(label):
+            seq = seq[len(label):]
+        return seq
+
     rows = [
-        {"prompt": label, "completion": format_sequence(row["sequence"], tokenizer), "reward": float(-abs(20 - len(row["sequence"])))}
+        # reward is on the FULL generated length (what we actually want near 20),
+        # while the completion is the part after the prompt.
+        {"prompt": label, "completion": build_completion(row["sequence"]), "reward": float(-abs(20 - len(row["sequence"])))}
         for _, row in df.iterrows()
     ]
     return Dataset.from_list(rows)

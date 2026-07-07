@@ -27,8 +27,9 @@ def main():
     spec_tokens = ["<|pad|>", "<|bos|>", "<|eos|>", "[UNK]"]
     trainer.special_tokens = spec_tokens
 
-    # Set vocabulary size
-    corpus = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+    # Set vocabulary size. Include the ProtGPT3-style direction tokens "1" (forward) and
+    # "2" (reverse) so the tiny test model can be prompted the same way as the real model.
+    corpus = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '1', '2']
     trainer.vocab_size = len(corpus) + len(spec_tokens)
 
     # Build tokenizer from interator

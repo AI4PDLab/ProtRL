@@ -1,7 +1,7 @@
 #!/bin/bash -l
 set -e
 
-label="M"
+label="1"   # ProtGPT3 direction token: "1" = forward (N->C), "2" = reverse
 model_directory="AI4PD/ProtGPT3-112M" # HuggingFace repo or local path; use "test" to auto-generate a tiny model for debugging
 max_iteration_num=50
 output_dir=""
