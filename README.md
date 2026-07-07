@@ -32,20 +32,24 @@ pip install -r requirements.txt
 
 ## 2. Quickstart (Jupyter Notebooks)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YZvqI6PHfxckGlKaJtE4LDNWYn8gn3G_?usp=sharing)
 
 We provide two interactive notebooks to get you started quickly:
 
-### 🧪 Recommended for Experimentalists
-👉 **[ProRL_csv_experimental.ipynb](file:///users/nferruz/fstocco/Desktop/ProtRL/ProRL_csv_experimental.ipynb)**
-A super fast workflow built for experimentalists to fine-tune protein language models on custom experimental results:
+### 🧪 Production-Ready Protein Design Workflow
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1I-nlMYFu6vHJcKopUWmbYN6yvxnkx3kj?usp=sharing)
+ **[ProRL_csv_experimental.ipynb](file:///users/nferruz/fstocco/Desktop/ProtRL/ProRL_csv_experimental.ipynb)**
+A complete, ready-to-use notebook for any protein design task. It allows you to feed back experimental data from a custom CSV to automatically fine-tune and reinforce the protein language model (SFT warm-up followed by GRPO reinforcement learning).
 1. **Load data from a CSV**: Input your custom sequences and experimental rewards.
 2. **SFT Warm-Up (with Train/Eval Split)**: Automatically filters and fine-tunes on sequences with rewards higher than the mean, using TRL's `SFTTrainer` (no manual tokenization needed) on an 80/20 train/eval split with step-wise logging.
 3. **ProtRL GRPO (with Train/Eval Split)**: Applies reinforcement learning on the complete dataset with step-wise metrics (no manual tokenization needed).
 4. **Training Curves**: Plots training/evaluation loss curves and Spearman correlation tracking metrics using simple matplotlib charts.
 
-### 🧩 Standard Toy Tutorial
-👉 **[example/ProRL_example.ipynb](file:///users/nferruz/fstocco/Desktop/ProtRL/example/ProRL_example.ipynb)**
+###  Standard Toy Tutorial
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YZvqI6PHfxckGlKaJtE4LDNWYn8gn3G_?usp=sharing)
+
+ **[example/ProRL_example.ipynb](file:///users/nferruz/fstocco/Desktop/ProtRL/example/ProRL_example.ipynb)**
 A self-contained toy workflow demonstrating mutation dataset generation, SFT, and GRPO length control.
 
 ---
