@@ -37,7 +37,7 @@ Additionally we provide two interactive notebooks to get you started quickly:
 
 ### 🧪 Production-Ready Protein Design Workflow
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1I-nlMYFu6vHJcKopUWmbYN6yvxnkx3kj?usp=sharing)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1ibIgvR-GYklW1vu1grbvDecM1-fzd_yp?usp=sharing)
  **[ProRL_csv_experimental.ipynb](ProRL_csv_experimental.ipynb)**
 A complete, ready-to-use notebook for any protein design task. It allows you to feed back experimental data from a custom CSV to automatically fine-tune and reinforce the protein language model (SFT warm-up followed by GRPO reinforcement learning).
 1. **Load data from a CSV**: Input your custom sequences and experimental rewards.
@@ -47,7 +47,7 @@ A complete, ready-to-use notebook for any protein design task. It allows you to 
 
 ###  Standard Toy Tutorial
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YZvqI6PHfxckGlKaJtE4LDNWYn8gn3G_?usp=sharing)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MiZ80UcN0easI6xqY_yQc0USLktbR0Go?usp=sharing)
 
  **[example/ProRL_example.ipynb](example/ProRL_example.ipynb)**
 A self-contained toy workflow demonstrating mutation dataset generation, SFT, and GRPO length control.

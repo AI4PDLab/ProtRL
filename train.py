@@ -23,7 +23,7 @@ args = parser.parse_args()
 CONFIG = {
     "beta": 0.01,
     "seed": 42,
-    "learning_rate": 1e-5,
+    "learning_rate": 1e-4,
     "num_epochs": 1,
     "split_percent": 0.2,
     "adam_betas": [0.9, 0.98],
