@@ -30,10 +30,14 @@ pip install -r requirements.txt
 
 ---
 
-## 2. Quickstart (Jupyter Notebooks)
+## 2. Quickstart
 
+A very simple demo can be run with a tiny model locally:
+```bash
+bash ProtRL.sh --model_dir "test" 
+```
 
-We provide two interactive notebooks to get you started quickly:
+Additionally we provide two interactive notebooks to get you started quickly:
 
 ### 🧪 Production-Ready Protein Design Workflow
 
