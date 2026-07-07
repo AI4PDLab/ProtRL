@@ -21,9 +21,9 @@ parser.add_argument("--output_dir", type=str, default=".", help="Directory to sa
 args = parser.parse_args()
 
 CONFIG = {
-    "beta": 0.1,
+    "beta": 0.01,
     "seed": 42,
-    "learning_rate": 2e-4,
+    "learning_rate": 9e-6,
     "num_epochs": 1,
     "split_percent": 0.2,
     "adam_betas": [0.9, 0.98],
