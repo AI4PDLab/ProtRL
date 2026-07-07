@@ -21,9 +21,9 @@ parser.add_argument("--output_dir", type=str, default=".", help="Directory to sa
 args = parser.parse_args()
 
 CONFIG = {
-    "beta": 0.01,
+    "beta": 0.1,
     "seed": 42,
-    "learning_rate": 1e-6,
+    "learning_rate": 2e-5,
     "num_epochs": 1,
     "split_percent": 0.2,
     "adam_betas": [0.9, 0.98],
@@ -63,10 +63,10 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
 
-def format_sequence(sequence, tokenizer):
-    if " " not in sequence:
-        return " ".join(list(sequence))
-    return sequence
+
+def format_sequence(sequence):
+    return " ".join(list(sequence))
+
 
 
 def generate_dataset(iteration_num, label):
@@ -76,7 +76,7 @@ def generate_dataset(iteration_num, label):
     df = pd.read_csv(logs_path)
     df = df[df["iteration_num"] == iteration_num]
     rows = [
-        {"prompt": label, "completion": format_sequence(row["sequence"], tokenizer), "reward": float(-abs(50 - len(row["sequence"])))}
+        {"prompt": label, "completion": format_sequence(row["sequence"]), "reward": float(-abs(20 - len(row["sequence"])))}
         for _, row in df.iterrows()
     ]
     return Dataset.from_list(rows)

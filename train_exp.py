@@ -51,17 +51,14 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
 
-def format_sequence(sequence, tokenizer):
-    name = getattr(tokenizer, "name_or_path", "") or ""
-    if " " not in sequence:
-        return " ".join(list(sequence))
-    return sequence
+def format_sequence(sequence):
+    return " ".join(list(sequence))
 
 
 def build_dataset():
     df = pd.read_csv(args.csv)
     rows = [
-        {"prompt": row["prompt"], "completion": format_sequence(row["sequence"], tokenizer), "reward": float(row["reward"])}
+        {"prompt": row["prompt"], "completion": format_sequence(row["sequence"]), "reward": float(row["reward"])}
         for _, row in df.iterrows()
     ]
     return Dataset.from_list(rows)

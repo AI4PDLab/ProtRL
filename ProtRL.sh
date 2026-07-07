@@ -3,7 +3,7 @@ set -e
 
 label="M"
 model_directory="AI4PD/ProtGPT3-112M" # HuggingFace repo or local path; use "test" to auto-generate a tiny model for debugging
-max_iteration_num=10
+max_iteration_num=50
 output_dir=""
 PYTHON_EXEC="${PYTHON_EXEC:-python3}" # override with PYTHON_EXEC=/path/to/python bash ProtRL.sh ...
 
