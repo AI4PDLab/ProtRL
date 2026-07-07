@@ -28,7 +28,7 @@ def generate_sequences(label, model, tokenizer, device, num_sequences=20, max_le
         max_length=max_length,    
         do_sample=True,
         num_return_sequences=num_sequences,
-        pad_token_id=tokenizer.eos_token_id
+        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
     )
     
     return outputs
@@ -66,6 +66,8 @@ def main():
     print(f"Loading model and tokenizer from {model_name}...")
     # Tokenizer is usually loaded from the base model directory
     tokenizer = AutoTokenizer.from_pretrained(args.model_dir)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
 
     print("Model loaded.")

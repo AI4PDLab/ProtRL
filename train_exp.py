@@ -27,7 +27,7 @@ parser.add_argument("--split_percent", type=float, default=0.2)
 parser.add_argument("--ref_model", type=str, default=None)
 
 args = parser.parse_args()
-ref_model = args.ref_model or args.model_dir
+ref_model = args.ref_model
 
 
 def seed_everything(seed):
@@ -39,19 +39,7 @@ def seed_everything(seed):
     set_seed(seed)
 
 
-def build_dataset():
-    df = pd.read_csv(args.csv)
-    rows = [
-        {"prompt": row["prompt"], "completion": row["sequence"], "reward": float(row["reward"])}
-        for _, row in df.iterrows()
-    ]
-    return Dataset.from_list(rows)
-
-
 seed_everything(42)
-
-dataset = build_dataset()
-split = dataset.train_test_split(test_size=args.split_percent, seed=42, shuffle=True)
 
 tokenizer = AutoTokenizer.from_pretrained(
     args.model_dir,
@@ -59,6 +47,28 @@ tokenizer = AutoTokenizer.from_pretrained(
     add_bos_token=False,
     use_fast=True,
 )
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+
+def format_sequence(sequence, tokenizer):
+    name = getattr(tokenizer, "name_or_path", "") or ""
+    if " " not in sequence:
+        return " ".join(list(sequence))
+    return sequence
+
+
+def build_dataset():
+    df = pd.read_csv(args.csv)
+    rows = [
+        {"prompt": row["prompt"], "completion": format_sequence(row["sequence"], tokenizer), "reward": float(row["reward"])}
+        for _, row in df.iterrows()
+    ]
+    return Dataset.from_list(rows)
+
+
+dataset = build_dataset()
+split = dataset.train_test_split(test_size=args.split_percent, seed=42, shuffle=True)
 
 training_args = ProtRLTrainingArgument(
     output_dir=args.output,

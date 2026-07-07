@@ -87,6 +87,27 @@ def reward_len(completions, **kwargs):
         })
     return [float(-abs(100 - len(c.replace(" ", "")))) for c in completions]
 
+# Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained(
+    args.model_dir,
+    add_eos_token=True,
+    add_bos_token=False,
+    use_fast=True,
+)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+seed_everything(CONFIG["seed"])
+
+
+def format_sequence(sequence, tokenizer):
+    name = getattr(tokenizer, "name_or_path", "") or ""
+    if "protgpt3" in name.lower():
+        if " " not in sequence:
+            return " ".join(list(sequence))
+    return sequence
+
+
 def generate_dataset(iteration_num, label):
     """Generates dataset from logs.csv (used by offline methods)."""
     logs_path = os.path.join(args.output_dir, "logs.csv")
@@ -100,7 +121,7 @@ def generate_dataset(iteration_num, label):
     rows = [
         {
             "prompt": label,
-            "completion": entry["sequence"],
+            "completion": format_sequence(entry["sequence"], tokenizer),
             "reward": float(-abs(100 - len(entry["sequence"]))),
         }
         for _, entry in df.iterrows()
@@ -112,9 +133,6 @@ def generate_dummy_dataset(num_samples=500):
     return Dataset.from_list([{"prompt": args.label, "completion": ""} for _ in range(num_samples)])
 
 
-# Set seed
-seed_everything(CONFIG["seed"])
-
 # Create dataset
 if args.method == "trl_GRPO":
     dataset = generate_dummy_dataset()
@@ -124,14 +142,6 @@ else:
 split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
 train_dataset = split["train"]
 eval_dataset = split["test"]
-
-# Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained(
-    args.model_dir,
-    add_eos_token=True,
-    add_bos_token=False,
-    use_fast=True,
-)
 
 # Determine model and checkpoint
 if args.iteration_num > 1:

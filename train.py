@@ -51,25 +51,7 @@ def seed_everything(seed):
     set_seed(seed)
 
 
-def generate_dataset(iteration_num, label):
-    logs_path = os.path.join(args.output_dir, "logs.csv")
-    if not os.path.exists(logs_path):
-        raise FileNotFoundError(f"logs.csv not found in {args.output_dir}")
-    df = pd.read_csv(logs_path)
-    df = df[df["iteration_num"] == iteration_num]
-    rows = [
-        {"prompt": label, "completion": row["sequence"], "reward": float(-abs(50 - len(row["sequence"])))}
-        for _, row in df.iterrows()
-    ]
-    return Dataset.from_list(rows)
-
-
 seed_everything(CONFIG["seed"])
-
-dataset = generate_dataset(args.iteration_num, args.label)
-split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
-train_dataset = split["train"]
-eval_dataset = split["test"]
 
 tokenizer = AutoTokenizer.from_pretrained(
     args.model_dir,
@@ -77,6 +59,33 @@ tokenizer = AutoTokenizer.from_pretrained(
     add_bos_token=False,
     use_fast=True,
 )
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+
+def format_sequence(sequence, tokenizer):
+    if " " not in sequence:
+        return " ".join(list(sequence))
+    return sequence
+
+
+def generate_dataset(iteration_num, label):
+    logs_path = os.path.join(args.output_dir, "logs.csv")
+    if not os.path.exists(logs_path):
+        raise FileNotFoundError(f"logs.csv not found in {args.output_dir}")
+    df = pd.read_csv(logs_path)
+    df = df[df["iteration_num"] == iteration_num]
+    rows = [
+        {"prompt": label, "completion": format_sequence(row["sequence"], tokenizer), "reward": float(-abs(50 - len(row["sequence"])))}
+        for _, row in df.iterrows()
+    ]
+    return Dataset.from_list(rows)
+
+
+dataset = generate_dataset(args.iteration_num, args.label)
+split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
+train_dataset = split["train"]
+eval_dataset = split["test"]
 
 if args.iteration_num > 1:
     prev_model_dir = os.path.join(args.output_dir, f"output_iteration{args.iteration_num - 1}")
