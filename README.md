@@ -4,17 +4,13 @@
 </div>
 
 A Reinforcement Learning (RL) framework for autoregressive protein Language Models (pLMs).
-Currently we have implemented the following algorithms:
-- Weighted DPO (with optional IRPO regularisation)
-- GRPO 
-- REINFORCE
 
 This repository accompanies the paper [*Guiding Generative Protein Language Models with Reinforcement Learning*](https://arxiv.org/abs/2412.12979).
 
 Currently supported algorithms:
-- **GRPO** (Group Relative Policy Optimization)
-- **Weighted DPO** (Weighted Direct Preference Optimization)
-- **REINFORCE**
+- **GRPO** — Group Relative Policy Optimization
+- **Weighted DPO** — Weighted Direct Preference Optimization (with optional IRPO regularisation)
+- **REINFORCE** — with an optional entropy bonus
 
 ---
 
@@ -42,18 +38,18 @@ Additionally we provide two interactive notebooks to get you started quickly:
 ### 🧪 Production-Ready Protein Design Workflow
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1I-nlMYFu6vHJcKopUWmbYN6yvxnkx3kj?usp=sharing)
- **[ProRL_csv_experimental.ipynb](file:///users/nferruz/fstocco/Desktop/ProtRL/ProRL_csv_experimental.ipynb)**
+ **[ProRL_csv_experimental.ipynb](ProRL_csv_experimental.ipynb)**
 A complete, ready-to-use notebook for any protein design task. It allows you to feed back experimental data from a custom CSV to automatically fine-tune and reinforce the protein language model (SFT warm-up followed by GRPO reinforcement learning).
 1. **Load data from a CSV**: Input your custom sequences and experimental rewards.
-2. **SFT Warm-Up (with Train/Eval Split)**: Automatically filters and fine-tunes on sequences with rewards higher than the mean, using TRL's `SFTTrainer` (no manual tokenization needed) on an 80/20 train/eval split with step-wise logging.
-3. **ProtRL GRPO (with Train/Eval Split)**: Applies reinforcement learning on the complete dataset with step-wise metrics (no manual tokenization needed).
+2. **SFT Warm-Up (with Train/Eval Split)**: Automatically filters and fine-tunes on sequences with rewards higher than the mean, using a standard Hugging Face `Trainer` with a causal-LM data collator on an 80/20 train/eval split with step-wise logging.
+3. **ProtRL GRPO (with Train/Eval Split)**: Applies reinforcement learning on the complete dataset with step-wise metrics (the trainer tokenizes internally — pass raw sequences).
 4. **Training Curves**: Plots training/evaluation loss curves and Spearman correlation tracking metrics using simple matplotlib charts.
 
 ###  Standard Toy Tutorial
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1YZvqI6PHfxckGlKaJtE4LDNWYn8gn3G_?usp=sharing)
 
- **[example/ProRL_example.ipynb](file:///users/nferruz/fstocco/Desktop/ProtRL/example/ProRL_example.ipynb)**
+ **[example/ProRL_example.ipynb](example/ProRL_example.ipynb)**
 A self-contained toy workflow demonstrating mutation dataset generation, SFT, and GRPO length control.
 
 ---
@@ -148,6 +144,26 @@ trainer = ProtRL_wDPOTrainer(
 trainer.train()
 ```
 
+### REINFORCE
+```python
+from src.pLM_REINFORCE import ProtRL_REINFORCETrainer, ProtRL_REINFORCETrainingArgument
+
+training_args = ProtRL_REINFORCETrainingArgument(
+    output_dir="ProtGPT3-REINFORCE",
+    logging_steps=10,
+    entropy_bonus=0.0,  # set > 0 to encourage exploration
+)
+
+trainer = ProtRL_REINFORCETrainer(
+    model="AI4PD/ProtGPT3-112M",
+    processing_class=tokenizer,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+)
+trainer.train()
+```
+
 ---
 
 ## 7. Dataset Format
@@ -157,13 +173,21 @@ The trainers expect Hugging Face `Dataset` inputs containing:
   * E.g. `"M"` for ProtGPT3 (representing the starting Methionine amino acid).
   * E.g. `""` (empty string) for unconditional generation.
   * E.g. `"<EC:1.1.1.1>"` or other specific function tags for guided protein language models (like ZymCTRL).
-* `completion`: The generated amino acid sequence.
+* `completion`: The **raw** amino-acid sequence, e.g. `"HGEGTFTSDLSKQME"`.
 * `reward`: A numerical score (higher is better).
 
 Example entry:
 ```json
-{"prompt": "M", "completion": "H G E G T F T S D L S K Q M E", "reward": 1.0}
+{"prompt": "M", "completion": "HGEGTFTSDLSKQME", "reward": 1.0}
 ```
+
+> ⚠️ **Pass the raw sequence — do not insert spaces between residues.**
+> ProtGPT3-112M (and the other character-level pLMs used here) tokenize **one token per
+> residue** and have no space token. The trainer tokenizes the `completion` for you, so a
+> space-separated string like `"H G E G T"` would map every space to `[UNK]`, and the
+> training tokens would no longer match what the model generates — silently breaking the
+> RL signal. When you decode generated sequences the tokenizer *displays* spaces between
+> residues; strip them with `.replace(" ", "")` before storing or reusing them.
 
 ---
 

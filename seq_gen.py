@@ -15,30 +15,36 @@ def calculate_perplexity(input_ids, model):
     loss = outputs.loss
     return math.exp(loss)
 
-def generate_sequences(label, model, tokenizer, device, num_sequences=20, max_length=100):
+def generate_sequences(label, model, tokenizer, device, num_sequences=20, max_aa_length=100):
     """
     Generates sequences using the model.
+
+    max_aa_length is the maximum number of amino acids. ProtGPT3-112M uses a
+    character-level tokenizer (one token per residue, no space tokens), so the token
+    budget equals the amino-acid budget.
     """
     input_ids = tokenizer.encode(label, return_tensors='pt').to(device)
-    
+    max_new_tokens = max_aa_length
+
     outputs = model.generate(
-        input_ids, 
-        top_k=9, 
+        input_ids,
+        top_k=9,
         repetition_penalty=1.2,
-        max_length=max_length,    
+        max_new_tokens=max_new_tokens,
         do_sample=True,
         num_return_sequences=num_sequences,
-        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
     )
-    
+
     return outputs
 
 def main():
     parser = argparse.ArgumentParser(description="Generate sequences using a pretrained LLM.")
     parser.add_argument("--model_dir", type=str, required=True, help="Path to the pretrained model directory.")
     parser.add_argument("--label", type=str, required=True, help="Prompt/Label for generation.")
-    parser.add_argument("--num_sequences", type=int, default=20, help="Number of sequences to generate.")
-    parser.add_argument("--max_length", type=int, default=100, help="Maximum length of generated sequences.")
+    parser.add_argument("--num_sequences", type=int, default=100, help="Number of sequences to generate.")
+    parser.add_argument("--max_length", type=int, default=100, help="Maximum amino-acid length of generated sequences.")
     parser.add_argument("--iteration_num", type=int, default=0, help="Iteration number for model selection and output filename.")
     parser.add_argument("--output_dir", type=str, default=".", help="Directory to save results and look for models.")
     

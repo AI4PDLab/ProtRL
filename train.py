@@ -23,7 +23,7 @@ args = parser.parse_args()
 CONFIG = {
     "beta": 0.01,
     "seed": 42,
-    "learning_rate": 9e-6,
+    "learning_rate": 1e-5,
     "num_epochs": 1,
     "split_percent": 0.2,
     "adam_betas": [0.9, 0.98],
@@ -64,8 +64,8 @@ if tokenizer.pad_token is None:
 
 
 
-def format_sequence(sequence):
-    return " ".join(list(sequence))
+def format_sequence(sequence, tokenizer):
+    return str(sequence).replace(" ", "")
 
 
 
@@ -76,7 +76,7 @@ def generate_dataset(iteration_num, label):
     df = pd.read_csv(logs_path)
     df = df[df["iteration_num"] == iteration_num]
     rows = [
-        {"prompt": label, "completion": format_sequence(row["sequence"]), "reward": float(-abs(20 - len(row["sequence"])))}
+        {"prompt": label, "completion": format_sequence(row["sequence"], tokenizer), "reward": float(-abs(20 - len(row["sequence"])))}
         for _, row in df.iterrows()
     ]
     return Dataset.from_list(rows)

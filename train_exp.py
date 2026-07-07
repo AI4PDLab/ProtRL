@@ -52,7 +52,7 @@ if tokenizer.pad_token is None:
 
 
 def format_sequence(sequence):
-    return " ".join(list(sequence))
+    return str(sequence).replace(" ", "")
 
 
 def build_dataset():

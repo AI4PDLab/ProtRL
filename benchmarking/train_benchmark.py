@@ -101,11 +101,7 @@ seed_everything(CONFIG["seed"])
 
 
 def format_sequence(sequence, tokenizer):
-    name = getattr(tokenizer, "name_or_path", "") or ""
-    if "protgpt3" in name.lower():
-        if " " not in sequence:
-            return " ".join(list(sequence))
-    return sequence
+    return str(sequence).replace(" ", "")
 
 
 def generate_dataset(iteration_num, label):
