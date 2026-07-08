@@ -35,7 +35,7 @@ bash ProtRL.sh --model_dir "test"
 
 Additionally we provide two interactive notebooks to get you started quickly:
 
-### 🧪 Production-Ready Protein Design Workflow
+### Production-Ready Protein Design Workflow
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1ibIgvR-GYklW1vu1grbvDecM1-fzd_yp?usp=sharing)
  **[ProRL_csv_experimental.ipynb](ProRL_csv_experimental.ipynb)**
@@ -47,9 +47,7 @@ A complete, ready-to-use notebook for any protein design task. It allows you to 
 
 ###  Standard Toy Tutorial
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MiZ80UcN0easI6xqY_yQc0USLktbR0Go?usp=sharing)
-
- **[example/ProRL_example.ipynb](example/ProRL_example.ipynb)**
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MiZ80UcN0easI6xqY_yQc0USLktbR0Go?usp=sharing) **[example/ProRL_example.ipynb](example/ProRL_example.ipynb)**
 A self-contained toy workflow demonstrating mutation dataset generation, SFT, and GRPO length control.
 
 ---
