@@ -16,6 +16,7 @@ from transformers.trainer_utils import EvalLoopOutput
 from transformers.utils import is_peft_available
 from datasets import Dataset, IterableDataset
 from collections.abc import Callable 
+import math
 
 if is_peft_available():
     from peft import (
@@ -155,15 +156,21 @@ class ProtRL_wDPOTrainer(ProtRLBaseTrainer):
         all_log_p = self.accelerator.gather_for_metrics(policy_logps.sum(dim=1)).detach()
         all_rewards = self.accelerator.gather_for_metrics(rewards).detach()
 
-        i_rwd_corr = spearman_correlation(all_log_ratios, all_rewards)
-        log_p_corr  = spearman_correlation(all_log_p, all_rewards)
+        i_rwd_corr_val = spearman_correlation(all_log_ratios, all_rewards).item()
+        log_p_corr_val  = spearman_correlation(all_log_p, all_rewards).item()
+
 
         prefix = "eval_" if train_eval == "eval" else ""
-        metrics[f"{prefix}i_reward_correlation"] =  i_rwd_corr.item()
-        metrics[f"{prefix}logp_correlation"] =  log_p_corr.item()
+
+        # skip NaN correlation to avoid polluting log
+        if not math.isnan(i_rwd_corr_val):
+            metrics[f"{prefix}i_reward_correlation"] = i_rwd_corr_val
+        if not math.isnan(log_p_corr_val):
+            metrics[f"{prefix}logp_correlation"] = log_p_corr_val
+
         metrics[f"{prefix}log_ratio"] =  all_log_ratios.mean().item()
         metrics[f"{prefix}true_rwd_mean"] =  all_rewards.mean().item()
-        metrics[f"{prefix}true_rwd_std"] =  all_rewards.std().item()
+        metrics[f"{prefix}true_rwd_std"] = all_rewards.std().item() if all_rewards.numel() > 1 else 0.0
         #metrics[f"{prefix}log_ratio"] =  self.accelerator.gather_for_metrics(_log_rations).mean().item()
         #metrics[f"{prefix}true_rwd"] =  self.accelerator.gather_for_metrics(all_rewards).mean().item()
 

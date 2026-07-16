@@ -1,5 +1,6 @@
 from typing import Any, Literal
 import torch
+import math
 import torch.nn as nn
 from dataclasses import dataclass, field
 import logging
@@ -23,13 +24,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ProtRL_REINFORCETrainingArgument(ProtRLTrainingArgument):
-    entropy_bonus: float = field(
-        default=0.0,
-        metadata={
-            "help": "Coefficient for entropy bonus. Positive values encourage exploration "
-                    "by penalising low-entropy (overconfident) distributions. Set to 0 to disable."
-        },
-    )
+    pass
+    #entropy_bonus: float = field(
+    #    default=0.0,
+    #    metadata={
+    #        "help": "Coefficient for entropy bonus. Positive values encourage exploration "
+    #                "by penalising low-entropy (overconfident) distributions. Set to 0 to disable."
+    #    },
+    #)
 
 
 class ProtRL_REINFORCETrainer(ProtRLBaseTrainer):
@@ -111,22 +113,21 @@ class ProtRL_REINFORCETrainer(ProtRLBaseTrainer):
         # Per-token log probabilities for completion tokens (prompt masked out)
         per_token_logps = self.get_batch_logps(policy_logits, inputs["labels"])
 
-        # Standardised advantage
+        # extract reward
         rewards = inputs["reward"]
-        advantage = (rewards - rewards.mean()) / (rewards.std() + 1e-12)
 
         # REINFORCE: sum log-probs over tokens, weight by advantage, average over batch
         seq_logps = per_token_logps.sum(dim=-1)
-        loss = -(seq_logps * advantage).mean()
+        loss = -(seq_logps * rewards).mean()
 
-        # Optional entropy bonus: H(pi) = -sum_v(pi * log pi) averaged over completion tokens
-        if self.entropy_bonus != 0.0:
-            completion_mask = (inputs["labels"][..., 1:] != -100).float()
-            n_completion_tokens = completion_mask.sum().clamp(min=1)
-            log_probs = policy_logits[..., :-1, :].log_softmax(dim=-1)
-            entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
-            entropy = (entropy * completion_mask).sum() / n_completion_tokens
-            loss = loss - self.entropy_bonus * entropy
+        ## Optional entropy bonus: H(pi) = -sum_v(pi * log pi) averaged over completion tokens
+        #if self.entropy_bonus != 0.0:
+        #    completion_mask = (inputs["labels"][..., 1:] != -100).float()
+        #    n_completion_tokens = completion_mask.sum().clamp(min=1)
+        #    log_probs = policy_logits[..., :-1, :].log_softmax(dim=-1)
+        #    entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
+        #    entropy = (entropy * completion_mask).sum() / n_completion_tokens
+        #    loss = loss - self.entropy_bonus * entropy
 
         if self.aux_loss_enabled:
             loss = loss + self.router_aux_loss_coef * model_output.aux_loss
@@ -140,13 +141,19 @@ class ProtRL_REINFORCETrainer(ProtRLBaseTrainer):
         all_log_p = self.accelerator.gather_for_metrics(seq_logps.detach())
         all_rewards = self.accelerator.gather_for_metrics(rewards.detach())
 
-        i_rwd_corr = spearman_correlation(all_log_ratios, all_rewards)
-        log_p_corr = spearman_correlation(all_log_p, all_rewards)
+        # Compute spearman correlation between i_rwd as well as log_p and true rwd
+        i_rwd_corr_val = spearman_correlation(all_log_ratios, all_rewards).item()
+        log_p_corr_val  = spearman_correlation(all_log_p, all_rewards).item()
 
         prefix = "eval_" if train_eval == "eval" else ""
-        metrics[f"{prefix}i_reward_correlation"] = i_rwd_corr.item()
-        metrics[f"{prefix}logp_correlation"] = log_p_corr.item()
+
+        # skip NaN correlation to avoid polluting log
+        if not math.isnan(i_rwd_corr_val):
+            metrics[f"{prefix}i_reward_correlation"] = i_rwd_corr_val
+        if not math.isnan(log_p_corr_val):
+            metrics[f"{prefix}logp_correlation"] = log_p_corr_val
+
         metrics[f"{prefix}true_rwd_mean"] = all_rewards.mean().item()
-        metrics[f"{prefix}true_rwd_std"] = all_rewards.std().item()
+        metrics[f"{prefix}true_rwd_std"] = all_rewards.std().item() if all_rewards.numel() > 1 else 0.0
 
         return loss, metrics

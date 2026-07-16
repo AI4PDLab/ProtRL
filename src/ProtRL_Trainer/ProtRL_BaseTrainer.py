@@ -19,7 +19,7 @@ from transformers import (
 )
 from transformers.trainer_utils import EvalLoopOutput
 from .preference_sampler import PreferenceBatchSampler
-from .ProtRL_utils import compute_wDPO_metrics, create_reference_model
+from .ProtRL_utils import  create_reference_model
 from .ProtRL_dataCollator import ProtRLDataCollatorWithPadding
 from transformers.utils import is_peft_available
 import inspect
@@ -132,9 +132,6 @@ class ProtRLBaseTrainer(Trainer):
         if compute_metrics is not None:
             raise ValueError("wDPO uses a custom compute metrics function by default, please don't pass any compute_metrics")
 
-        # needing debugging
-        #compute_metrics = compute_wDPO_metrics 
-
         if args is None:
             # this is a fallback each RL algorithm built on top should initalise its own ProtRLTrainingArgument sub-class
             output_dir = "tmp_basetrainer"
@@ -154,9 +151,8 @@ class ProtRLBaseTrainer(Trainer):
 
         # ensure the last "reduced" batch is always drop, else Spearman correlation not reliable
         # if last batch <3 elements
-        args.dataloader_drop_last=True 
-
-        logger.warning("NOTE: wDPO always has dataloader_drop_last=True, this ensure Spearman correlation metrics is always reliable computed") 
+        #args.dataloader_drop_last=True  # set to False else batch_sampler skips entries <  batch_size 
+        #logger.warning("NOTE: wDPO always has dataloader_drop_last=True, this ensure Spearman correlation metrics is always reliable computed") 
 
         if args.per_device_train_batch_size <3:
             logger.warning("WARNING per_device_train_batch_size <3, spearman correlation training metrics will be unreliable") 
@@ -338,7 +334,7 @@ class ProtRLBaseTrainer(Trainer):
             preference_col_name=self.preference_col_name,
             batch_size=self.args.per_device_eval_batch_size,
             shuffle=False,
-            drop_last=self.args.dataloader_drop_last,   # (the eval drop_last point from before)
+            drop_last=self.args.dataloader_drop_last,   # (the eval drrop_last point from before)
             seed=self.args.seed,
         )
 
@@ -446,7 +442,7 @@ class ProtRLBaseTrainer(Trainer):
                 }
 
 
-        logger.warning("NOTE: ProtRLTrainer tokenization ALWAYS adds an EOS token at the end of each sequence - the BOS token is added to the prompt ONLY if not already present")
+        logger.warning("NOTE: ProtRLTrainer tokenization ALWAYS adds an EOS token at the end of each sequence - the BOS token is added to the prompt ONLY if not already present \n So, it is recommended to set add_eos_token=False in the Tokenizer to avoid doubles")
 
         # Build the kwargs for the `map` function
         map_kwargs = {}

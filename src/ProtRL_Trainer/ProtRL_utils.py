@@ -13,60 +13,46 @@ import torch.nn.functional as F
 from datasets import Dataset
 
 
-def create_wDPO_dataset(df, prompt):
-    """
-    Based on ProtRL wDPO Trainer required structure
-    """
-    rows = []
-    for idx, entry in df.iterrows():
-        sequence = entry["sequence"]
-        activity = entry["activity"]
+#def compute_wDPO_metrics(eval_preds):
+#    """
+#    Custom evaluation metric for wDPO computing the spearman correlation between intristic rewards and activity
+#    
+#    :param eval_preds:  contains all log_ratios from the whole eval set and 
+#    """
+#
+#    # logits here is actually our log_ratios
+#    # labels here is actually our rewards
+#    # based on wDPO.predition_step
+#    logits, labels = eval_preds
+#    
+#    # Convert to torch for our helper function
+#    # device is managed automatically by the Hugging Face Trainer's evaluation loop.
+#    log_ratios = torch.tensor(logits)
+#    rewards = torch.tensor(labels)
+#    
+#    correlation = spearman_correlation(log_ratios, rewards)
+#    
+#    return {
+#        "reward_correlation": correlation.item()
+#    }
+#
 
-        rows.append({
-            "prompt": prompt,
-            "completion": sequence,
-            "reward": activity
-        })
+def spearman_correlation(x: torch.Tensor, y: torch.Tensor, min_samples: int = 3):
+    """Computes Spearman Rank Correlation in PyTorch. Returns NaN if undefined."""
+    n = x.shape[-1]
+    if n < min_samples:
+        return torch.tensor(float("nan"), device=x.device)
 
-    return Dataset.from_list(rows)
-
-def compute_wDPO_metrics(eval_preds):
-    """
-    Custom evaluation metric for wDPO computing the spearman correlation between intristic rewards and activity
-    
-    :param eval_preds:  contains all log_ratios from the whole eval set and 
-    """
-
-    # logits here is actually our log_ratios
-    # labels here is actually our rewards
-    # based on wDPO.predition_step
-    logits, labels = eval_preds
-    
-    # Convert to torch for our helper function
-    # device is managed automatically by the Hugging Face Trainer's evaluation loop.
-    log_ratios = torch.tensor(logits)
-    rewards = torch.tensor(labels)
-    
-    correlation = spearman_correlation(log_ratios, rewards)
-    
-    return {
-        "reward_correlation": correlation.item()
-    }
-
-
-def spearman_correlation(x: torch.Tensor, y: torch.Tensor):
-    """Computes Spearman Rank Correlation in PyTorch."""
     def get_ranks(v: torch.Tensor):
-        # We use argsort twice to get the ordinal ranking
-        # the first returns the indices that would sort the tensor
-        # the second, given that order, gives you the elemt's position (i.e., the rank) 
         return v.argsort(dim=-1).argsort(dim=-1).float()
 
-    # Extra the ranks
     x_rank = get_ranks(x)
     y_rank = get_ranks(y)
 
-    # Pearson correlation on ranks = Spearman colleration
+    # guard against degenerate (zero-variance) ranks, e.g. constant rewards
+    if x_rank.std(unbiased=False) < 1e-8 or y_rank.std(unbiased=False) < 1e-8:
+        return torch.tensor(float("nan"), device=x.device)
+
     combined = torch.stack([x_rank, y_rank])
     corr = torch.corrcoef(combined)[0, 1]
     return corr

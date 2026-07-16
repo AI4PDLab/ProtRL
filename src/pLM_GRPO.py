@@ -17,6 +17,7 @@ from transformers.trainer_utils import EvalLoopOutput
 from transformers.utils import is_peft_available
 from datasets import Dataset, IterableDataset
 from collections.abc import Callable 
+import math
 
 if is_peft_available():
     from peft import (
@@ -32,6 +33,13 @@ logger = logging.getLogger(__name__)
 
 Disclaimer: GRPO is not an off-policy method (e.g., the REINFORCE-like gradient update is on-policy), after the first batch update, any other sample becomes off-policy, but this seems  to still work fine
 """
+@dataclass
+class ProtRL_GRPOTrainingArgument(ProtRLTrainingArgument):
+    """
+    Inherit to rename
+    """
+    pass
+
 
 class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
     """
@@ -128,7 +136,14 @@ class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
 
         # 5. COmpute advatange
         rewards = inputs["reward"]
-        advantage =  (rewards - rewards.mean(dim=-1)) / (rewards.std(dim=-1) + 1e-12)
+        # safe-guard
+        group_size = rewards.shape[-1]
+        if group_size > 1:
+            std = rewards.std(dim=-1)
+        else:
+            std = torch.ones_like(rewards)  # or zero out the advantage entirely
+        mean = rewards.mean(dim=-1)
+        advantage = (rewards - mean) / (std + 1e-12)
 
         # 6. Compute the GRPO Loss
         loss = (- 1 * (per_token_policy_logps * advantage.unsqueeze(-1)) + self.beta * per_token_kl).mean() 
@@ -147,16 +162,19 @@ class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
         all_rewards = self.accelerator.gather_for_metrics(rewards).detach()
 
         # Compute spearman correlation between i_rwd as well as log_p and true rwd
-        i_rwd_corr = spearman_correlation(all_log_ratio, all_rewards)
-        log_p_corr = spearman_correlation(all_log_p, all_rewards)
+        i_rwd_corr_val = spearman_correlation(all_log_ratio, all_rewards).item()
+        log_p_corr_val  = spearman_correlation(all_log_p, all_rewards).item()
 
         prefix = "eval_" if train_eval == "eval" else ""
 
-        metrics[f"{prefix}i_reward_correlation"] =  i_rwd_corr.item()
-        metrics[f"{prefix}logp_correlation"] =  log_p_corr.item()
-        metrics[f"{prefix}log"] =  all_log_p.mean().item()
+        # skip NaN correlation to avoid polluting log
+        if not math.isnan(i_rwd_corr_val):
+            metrics[f"{prefix}i_reward_correlation"] = i_rwd_corr_val
+        if not math.isnan(log_p_corr_val):
+            metrics[f"{prefix}logp_correlation"] = log_p_corr_val
 
+        metrics[f"{prefix}log"] =  all_log_p.mean().item()
         metrics[f"{prefix}true_rwd_mean"] =  all_rewards.mean().item()
-        metrics[f"{prefix}true_rwd_std"] =  all_rewards.std().item()
+        metrics[f"{prefix}true_rwd_std"] = all_rewards.std().item() if all_rewards.numel() > 1 else 0.0
 
         return loss, metrics
