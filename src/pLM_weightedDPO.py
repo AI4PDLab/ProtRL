@@ -2,7 +2,6 @@ from typing import Any, Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 from dataclasses import dataclass, field
 import logging
 from contextlib import contextmanager
@@ -26,31 +25,31 @@ if is_peft_available():
 
 logger = logging.getLogger(__name__)
 
-"""
-#TODO
-1. Check batch sampler is working correctly (ideally check this on distributed training) - may want to extend this to all methods
-2. Implement GRPO loss, since n. iterations=1, don't need KL relative to old model, so simpler implementation ( may want to change it in the future)
-
-Disclaimer: GRPO is not an off-policy method (e.g., the REINFORCE-like gradient update is on-policy), after the first batch update, any other sample becomes off-policy, but this seems  to still work fine
-"""
 @dataclass
-class ProtRL_GRPOTrainingArgument(ProtRLTrainingArgument):
-    """
-    Inherit to rename
-    """
-    pass
+class ProtRL_wDPOTrainingArgument(ProtRLTrainingArgument):
+    IRPO_regularisation: bool = field(
+        default=False,
+        metadata={"help": "Enable IRPO regularisation of likelihood of positive examples (adapted to wDPO)"}
+    )
+
+    IRPO_regulariser_coeff: float = field(
+            default=0.05,
+            metadata={
+                "help": "Parameter controlling \alpha weight to IRPO regulariser"
+            },
+        )
 
 
-class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
+class ProtRL_wDPOTrainer(ProtRLBaseTrainer):
     """
-    Class to implement an "offline" version of GRPO (i.e., perfom GRPO update on fixed prompts)
+    Class to implement wDPO algorithm
     """
     def __init__(
         self,
         model: str | nn.Module | PreTrainedModel,
         processing_class: PreTrainedTokenizerBase | None,
         ref_model: PreTrainedModel | nn.Module | str | None = None,
-        args: ProtRLTrainingArgument | None = None,
+        args: ProtRL_wDPOTrainingArgument | None = None,  # Type hint shows this is ProtRL_wDPOTrainingArgument
         data_collator: DataCollator | None = None,
         train_dataset: Dataset | IterableDataset | None = None,
         eval_dataset: Dataset | IterableDataset | dict[str, Dataset | IterableDataset] | None = None,
@@ -63,16 +62,16 @@ class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
     ):
 
         if args is None:
-            output_dir = "tmp_grpo_trainer"
-            logger.info(f"No `ProtRLTrainingArgument` passed, using `output_dir={output_dir}`.")
-            args = ProtRLTrainingArgument(output_dir=output_dir)
+            output_dir = "tmp_wdpo_trainer"
+            logger.info(f"No `ProtRL_wDPOTrainingArgument` passed, using `output_dir={output_dir}`.")
+            args = ProtRL_wDPOTrainingArgument(output_dir=output_dir)
 
         # Initialize parent class
         super().__init__(
             model=model,
             processing_class=processing_class,
             ref_model=ref_model,
-            args=args,  
+            args=args,  # Pass the ProtRL_wDPOTrainingArgument object
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
@@ -84,6 +83,10 @@ class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
             peft_config=peft_config,
         )
 
+        # add  ProtRL_wDPOTrainingArgument specific argument
+        self.IRPO_regularisation = self.args.IRPO_regularisation
+        self.IRPO_reg_coeff = self.args.IRPO_regulariser_coeff
+
 
     def get_batch_loss_metrics(
         self,
@@ -92,9 +95,8 @@ class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
         train_eval: Literal["train", "eval"] = "train",
     ) -> tuple[torch.Tensor, dict[str, float]]:
         """
-        Implement loss for (offline) GRPO
+        Implement loss for wDPO
         """
-
         metrics = {}
 
         # turn off cashing of key-value, only useful for 
@@ -119,51 +121,44 @@ class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
         ref_logits = self.compute_ref_logits(inputs)
 
         # 3. Calculate Log Probabilities for the completion part
-        per_token_policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
-        per_token_ref_logps = self.get_batch_logps(ref_logits, inputs["labels"])
+        # this is compute per token
+        policy_logps = self.get_batch_logps(policy_logits, inputs["labels"])
+        ref_logps = self.get_batch_logps(ref_logits, inputs["labels"])
 
-        # 4. Compute KL between model and reference
-        # not for PAD and prompt log_p = 0 in get_batch_logps so KL=0 for those tokens
-        if self.beta != 0.0:
-            per_token_kl = torch.exp(per_token_ref_logps - per_token_policy_logps) - (per_token_ref_logps - per_token_policy_logps) - 1 
 
-            # Explicitly mask out per-token KL for prompt and pad tokens using labels
-            # although these already have zero KL divergence in the computation above
-            # better to be explicit 
-            per_token_kl = per_token_kl * (inputs["labels"][..., 1:] != -100)
-        else:
-            per_token_kl = 0
+        # 4. Compute the wDPO Loss
+        # log_ratios: (pi_policy / pi_ref)
+        log_ratios = self.beta * (policy_logps - ref_logps).sum(dim=-1) # sum log_P across all tokens
 
-        # 5. COmpute advatange
-        rewards = inputs["reward"]
-        # safe-guard
-        group_size = rewards.shape[-1]
-        if group_size > 1:
-            std = rewards.std(dim=-1)
-        else:
-            std = torch.ones_like(rewards)  # or zero out the advantage entirely
-        mean = rewards.mean(dim=-1)
-        advantage = (rewards - mean) / (std + 1e-12)
+        # Weighted DPO Loss
+        rewards = inputs["reward"].detach() # just in case
 
-        # 6. Compute the GRPO Loss
-        loss = (- 1 * (per_token_policy_logps * advantage.unsqueeze(-1)) + self.beta * per_token_kl).mean() 
+        # softmax the rewards to get a distribution
+        weights = torch.softmax(rewards, dim=0)
+        loss = F.cross_entropy(log_ratios, weights) 
 
         if self.aux_loss_enabled:
             loss = loss + self.router_aux_loss_coef * model_output.aux_loss
 
-        ## ---- COmpute useful logging statistic ----
-        # compute log ratio for correlation metrics
-        log_ratios = self.beta * (per_token_policy_logps - per_token_ref_logps)
+        if self.IRPO_regularisation:
+            # count n. of completion tokens using labels (i.e., prompt/pad labels set to -100)
+            completion_mask = (inputs["labels"] != -100)
+            completion_lengths = completion_mask.sum(dim=1).to(policy_logps.dtype).clamp(min=1) # use clamp to avoid division by 0
+            normalized_policy_logps = policy_logps / completion_lengths
+            # expectation over regulatisation E_w[L^{NN}]
+            loss = loss - self.IRPO_reg_coeff * torch.sum(weights * normalized_policy_logps)
 
+
+        ## ---- COmpute useful logging statistic ----
         # Gather across all processes for a more stable correlation
         # This ensures we are correlating the full macro-batch
-        all_log_ratio = self.accelerator.gather_for_metrics(log_ratios.sum(dim=-1)).detach()
-        all_log_p = self.accelerator.gather_for_metrics(per_token_policy_logps.sum(dim=-1)).detach()
+        all_log_ratios = self.accelerator.gather_for_metrics(log_ratios).detach()
+        all_log_p = self.accelerator.gather_for_metrics(policy_logps.sum(dim=1)).detach()
         all_rewards = self.accelerator.gather_for_metrics(rewards).detach()
 
-        # Compute spearman correlation between i_rwd as well as log_p and true rwd
-        i_rwd_corr_val = spearman_correlation(all_log_ratio, all_rewards).item()
+        i_rwd_corr_val = spearman_correlation(all_log_ratios, all_rewards).item()
         log_p_corr_val  = spearman_correlation(all_log_p, all_rewards).item()
+
 
         prefix = "eval_" if train_eval == "eval" else ""
 
@@ -173,8 +168,10 @@ class ProtRL_GRPOTrainer(ProtRLBaseTrainer):
         if not math.isnan(log_p_corr_val):
             metrics[f"{prefix}logp_correlation"] = log_p_corr_val
 
-        metrics[f"{prefix}log"] =  all_log_p.mean().item()
+        metrics[f"{prefix}log_ratio"] =  all_log_ratios.mean().item()
         metrics[f"{prefix}true_rwd_mean"] =  all_rewards.mean().item()
         metrics[f"{prefix}true_rwd_std"] = all_rewards.std().item() if all_rewards.numel() > 1 else 0.0
+        #metrics[f"{prefix}log_ratio"] =  self.accelerator.gather_for_metrics(_log_rations).mean().item()
+        #metrics[f"{prefix}true_rwd"] =  self.accelerator.gather_for_metrics(all_rewards).mean().item()
 
         return loss, metrics

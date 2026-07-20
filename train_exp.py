@@ -1,50 +1,38 @@
+"""
+One-shot offline training on a pre-scored CSV file.
 
-from src.utils import *
-from src.pLM_weigtedDPO import weighted_DPO
-from src.pLM_GRPO import pLM_GRPOTrainer
-
-from datasets import load_dataset, Dataset
-from trl import GRPOConfig, GRPOTrainer
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    PreTrainedModel)
-from trl.trainer.utils import pad
-from torch import nn
-from torch.optim.lr_scheduler import LambdaLR
-from torch.optim import AdamW
-from accelerate.utils import broadcast_object_list, gather, gather_object, is_peft_model, set_seed
-import argparse
-import torch
-import numpy as np
-import random
-import pandas as pd
-import math
+CSV expected columns: prompt, sequence, reward
+  - prompt:   the conditioning tag. For ProtGPT3 use its DIRECTION token, "1" (forward,
+              N->C) or "2" (reverse) - NOT "M". The trainer prepends BOS to the prompt.
+  - sequence: the raw amino-acid completion (no spaces, no leading direction token).
+  - reward:   numerical score (higher is better).
+"""
 import os
+import argparse
+import random
+import numpy as np
+import pandas as pd
+import torch
+from datasets import Dataset
+from transformers import AutoTokenizer
+from accelerate.utils import set_seed
+
+from src.ProtRL_Trainer import ProtRLTrainingArgument
+from src.pLM_GRPO import ProtRL_GRPOTrainer
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_dir", type=str, required=True)
 parser.add_argument("--csv", type=str, required=True)
-parser.add_argument("--output", type=str, default="./output_")
+parser.add_argument("--output", type=str, default="./output_exp")
 parser.add_argument("--learning_rate", type=float, default=2e-5)
+parser.add_argument("--beta", type=float, default=0.01)
 parser.add_argument("--num_epochs", type=int, default=1)
 parser.add_argument("--split_percent", type=float, default=0.2)
-parser.add_argument("--ref_model", type=str, required=False)
+parser.add_argument("--ref_model", type=str, default=None)
 
 args = parser.parse_args()
+ref_model = args.ref_model
 
-if args.ref_model is None:
-    ref_model = args.model_dir
-else:
-    ref_model = args.ref_model
-
-CONFIG = {
-        "learning_rate":  args.learning_rate,
-        "num_epochs":     args.num_epochs,
-        "split_percent":  args.split_percent,
-        "beta":           args.beta,
-        "seed":           42,
-        }
 
 def seed_everything(seed):
     torch.manual_seed(seed)
@@ -52,71 +40,61 @@ def seed_everything(seed):
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
-    random.seed(seed)
     set_seed(seed)
 
 
-def reward_len(completions, **kwargs):
-    return 0
+seed_everything(42)
+
+tokenizer = AutoTokenizer.from_pretrained(
+    args.model_dir,
+    add_eos_token=True,
+    add_bos_token=False,
+    use_fast=True,
+)
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 
 
-def generate_dataset():
+def format_sequence(sequence):
+    return str(sequence).replace(" ", "")
 
+
+def build_dataset():
     df = pd.read_csv(args.csv)
-    
-    rows = []
-    for idx, entry in df.iterrows():
-        sequence = entry["sequence"]
-        advantage = entry["advantage"]
-        prompt = entry["prompt"]
-        
-        rows.append({
-            "prompt": prompt,
-            "completion": sequence,
-            "reward": advantage
-        })
-    
+    rows = [
+        # str(): a direction-token prompt like "1" is read back from CSV as an int by pandas;
+        # the tokenizer requires a string.
+        {"prompt": str(row["prompt"]), "completion": format_sequence(row["sequence"]), "reward": float(row["reward"])}
+        for _, row in df.iterrows()
+    ]
     return Dataset.from_list(rows)
 
 
-seed_everything(CONFIG["seed"])
+dataset = build_dataset()
+split = dataset.train_test_split(test_size=args.split_percent, seed=42, shuffle=True)
 
-# create dataset
-dataset = generate_dataset()
-split = dataset.train_test_split(test_size=CONFIG["split_percent"], seed=CONFIG["seed"], shuffle=True)
+training_args = ProtRLTrainingArgument(
+    output_dir=args.output,
+    logging_steps=100,
+    beta=args.beta,
+    num_train_epochs=args.num_epochs,
+    learning_rate=args.learning_rate,
+    do_train=True,
+    do_eval=True,
+    eval_strategy="epoch",
+    save_strategy="epoch",
+    save_total_limit=1,
+)
 
-train_dataset = split['train']
-eval_dataset   = split['test'] 
-
-tokenizer = AutoTokenizer.from_pretrained(args.model_dir,
-                                          add_eos_token=False, # NEED this for training NOT for generate() else add eos at the end of promt
-                                          add_bos_token=False,
-                                          use_fast=True)
-
-
-training_args = GRPOConfig(output_dir=args.output, 
-                           logging_steps=100,
-                           beta=CONFIG["beta"],
-                           num_train_epochs = CONFIG["num_epochs"],
-                           learning_rate = CONFIG["learning_rate"],
-                           do_train = True, 
-                           do_eval = True, 
-                           eval_strategy = "epoch",
-                           save_strategy = "steps",                     
-                           eval_steps = 500, 
-                           save_total_limit = 1,
-                           save_steps = 5,
-                           num_generations = 8)
-
-
-trainer = pLM_GRPOTrainer(
-    model= args.model_dir,
-    ref_model = ref_model,
-    reward_funcs=reward_len,
+trainer = ProtRL_GRPOTrainer(
+    model=args.model_dir,
+    ref_model=ref_model,
     args=training_args,
-    train_dataset = train_dataset,
-    eval_dataset = eval_dataset,
-    processing_class=tokenizer)
+    train_dataset=split["train"],
+    eval_dataset=split["test"],
+    processing_class=tokenizer,
+)
 
 trainer.train()
 trainer.save_model()
+torch.cuda.empty_cache()

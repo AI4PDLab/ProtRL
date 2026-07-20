@@ -1,14 +1,16 @@
-pip==25.0.1
-transformers==4.51.3
-trl @ git+https://github.com/huggingface/trl.git@f3e8c2304428ef16e9ae5de9e5741ed84d533b7b
-bitsandbytes
-evaluate
+torch
+transformers
+trl
 peft
-torchaudio
-torchvision
-tensorboard
-deepspeed
 accelerate
+datasets
+bitsandbytes
+deepspeed
+evaluate
+tensorboard
 matplotlib
 seaborn
-datasets
+numpy
+pandas
+pyyaml
+tqdm

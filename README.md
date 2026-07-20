@@ -4,136 +4,19 @@
 </div>
 
 A Reinforcement Learning (RL) framework for autoregressive protein Language Models (pLMs).
-Currently we have implemented the following algorithms: 
-- Weighted DPO
-- GRPO (```bnpo```, ```dr_grpo``` and ```grpo```)
 
-This is the repository for the paper [*Guiding Generative Protein Language Models with Reinforcement Learning*](https://arxiv.org/abs/2412.12979). 
+This repository accompanies the paper [*Guiding Generative Protein Language Models with Reinforcement Learning*](https://arxiv.org/abs/2412.12979).
 
-## Table of Content
-- [About ProtRL](#about-protrl)
-- [Usage](#usage)
-- [Installation](#installation)
-- [Example](#example)
-- [General Usage](#generalusage)
-- [Troubleshooting](#troubleshooting)
-- [References](#references)
-- [Citation](#citation)
+Currently supported algorithms:
+- **GRPO** — Group Relative Policy Optimization
+- **Weighted DPO** — Weighted Direct Preference Optimization (with optional IRPO regularisation)
+- **REINFORCE** — with an optional entropy bonus
 
-## About ProtRL
+---
 
-ProtRL allows you to:
+## 1. Installation
 
-- [**Train offline**](#offline-training) on pre-existing experimental data.  
-- [**Train online**](#online-training) with custom scoring functions in an iterative loop.
-
-Based on the GRPO implementation in [Hugging Face’s TRL library](https://huggingface.co/docs/trl/main/en/grpo_trainer), we have extended the trainer to support:
-
-1. Passing custom datasets at each iteration  
-2. Weighted variant of DPO (not available in the standard Hugging Face trainer)
-
-### Quickstart Example
-
-```python
-from src.utils import *
-from src.pLM_weigtedDPO import weighted_DPO
-from src.pLM_GRPO import pLM_GRPOTrainer
-from trl import GRPOConfig, GRPOTrainer
-
-training_args = GRPOConfig(output_dir="ZymCTRL-wDPO", logging_steps=10)
-
-trainer = pLM_wDPOTrainer( #pLM_rDPOTrainer, pLM_GRPOTrainer
-    model= "AI4PD/ZymCTRL",
-    reward_funcs=reward_len,
-    args=training_args,
-    train_dataset = train_dataset,
-    eval_dataset = eval_dataset,
-    processing_class=tokenizer,
-)
-
-trainer.train()
-```
-## Usage
-Trainer accepts the datasets in a HF standard format, for example: 
-```python
-{"prompt": "The sky is", "completion": " blue.", "advantage":10}
-```
-### Offline training
-Use ```train_exp.py```, which expects a CSV file with columns:
-- prompt: prompt if any (in case of conditional generation)
-- sequence: pre-formatted protein sequences
-- advantage: numerical weight for each sequence
-  
-```python 
-python train_exp.py --model_dir "AI4PD/ZymCTRL" --csv "training_data.csv"
-```
-the code will generate the dataset for you and train your model. 
-
-### Online training
-1. We reccomend using the HF implementation of GRPO for straightforward rewards (e.g., sequence length, amino-acid ratios), use the standard GRPO trainer:
-
-```python 
-from datasets import load_dataset
-from trl import GRPOConfig, GRPOTrainer
-
-dataset = load_dataset("your_dataset")
-split = dataset.train_test_split(test_size=0.80, seed=42, shuffle=True)
-
-train_dataset = split['train']
-eval_dataset   = split['test']
-
-# Define the reward function, in this case
-def reward_len(completions, **kwargs):
-    return [-abs(20 - len(completion)) for completion in completions]
-
-tokenizer = AutoTokenizer.from_pretrained("AI4PD/ZymCTRL")
-tokenizer.padding_side = "left"
-tokenizer.eos_token_id = 1
-tokenizer.pad_token_id = 0
-
-training_args = GRPOConfig(output_dir="ZymCTRL-GRPO", logging_steps=10)
-
-trainer = GRPO_trainer(
-    model= "AI4PD/ZymCTRL",
-    reward_funcs=reward_len,
-    args=training_args,
-    train_dataset = train_dataset,
-    eval_dataset = eval_dataset,
-    processing_class=tokenizer,
-)
-
-trainer.train()
-trainer.save_model() 
-```
-For complex pipelines—where you explicitly generate, save, and externally score sequences each iteration, you can use our  trainers. This is ideal for scoring in CPU arrays before training on GPU:
-
-```python
-from src.utils import *
-from src.pLM_weigtedDPO import weighted_DPO
-from trl import GRPOConfig, GRPOTrainer
-
-training_args = GRPOConfig(output_dir="ZymCTRL-GRPO", logging_steps=10)
-
-trainer = weighted_DPO( #pLM_GRPOTrainer
-    model= "AI4PD/ZymCTRL",
-    reward_funcs=reward_len,
-    args=training_args,
-    train_dataset = train_dataset,
-    eval_dataset = eval_dataset,
-    processing_class=tokenizer,
-)
-
-trainer.train()
-```
-> **_Note:_** The reward_funcs is ignored and can be set as a function always returning 0, see examples. 
-
-For the original DPO algorithm, we recommend the Hugging Face DPO Trainer.
-
-Weighted DPO loss functions were adapted from the firsts described in [Widatalla et al., 2024](https://www.biorxiv.org/content/10.1101/2024.05.20.595026v1.abstract). You can find detailed explanations for each loss function and its changes in formulation in the Methods section of the [paper](https://arxiv.org/abs/2412.12979).
-
-> **_Note:_** Weights and advantages are treated as "the higher, the better." If your scoring function is designed to be minimized, please multiply it by -1.
-
-## Installation
+Set up the environment and install dependencies:
 
 ```bash
 git clone https://github.com/AI4PDLab/ProtRL.git
@@ -141,64 +24,185 @@ cd ProtRL
 pip install -r requirements.txt
 ```
 
-## Example 
-### TinyLLaMA Length Reduction
-The example directory includes ```tiny-llama``` directory, which demonstrates decreasing sequence length to 50 amino acids using a TinyLLaMA model that can be run locally on a single GPU. 
+---
+
+## 2. Quickstart
+
+A very simple demo can be run with a tiny model locally:
+```bash
+bash ProtRL.sh --model_dir "test" 
+```
+
+Additionally we provide two interactive notebooks to get you started quickly:
+
+### Production-Ready Protein Design Workflow
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1ibIgvR-GYklW1vu1grbvDecM1-fzd_yp?usp=sharing)
+ **[ProRL_csv_experimental.ipynb](ProRL_csv_experimental.ipynb)**
+A complete, ready-to-use notebook for any protein design task. It allows you to feed back experimental data from a custom CSV to automatically fine-tune and reinforce the protein language model (SFT warm-up followed by GRPO reinforcement learning).
+1. **Load data from a CSV**: Input your custom sequences and experimental rewards.
+2. **SFT Warm-Up (with Train/Eval Split)**: Automatically filters and fine-tunes on sequences with rewards higher than the mean, using a standard Hugging Face `Trainer` with a causal-LM data collator on an 80/20 train/eval split with step-wise logging.
+3. **ProtRL GRPO (with Train/Eval Split)**: Applies reinforcement learning on the complete dataset with step-wise metrics (the trainer tokenizes internally — pass raw sequences).
+4. **Training Curves**: Plots training/evaluation loss curves and Spearman correlation tracking metrics using simple matplotlib charts.
+
+###  Standard Toy Tutorial
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MiZ80UcN0easI6xqY_yQc0USLktbR0Go?usp=sharing) **[example/ProRL_example.ipynb](example/ProRL_example.ipynb)**
+A self-contained toy workflow demonstrating mutation dataset generation, SFT, and GRPO length control.
+
+---
+
+## 3. Online Iterative RL Loop
+
+For complex pipelines where you generate, score externally (e.g., structure, stability, or activity assays), and update the policy model iteratively:
 
 ```bash
-cd example/GRPO
-bash ProtRL-local.sh
+bash ProtRL.sh --model_dir "AI4PD/ProtGPT3-112M" --output_dir "my_experiment"
 ```
 
-This generates a TinyLLaMA model, runs RL training, and plots length reduction over iterations.
-<div align="center">
-    <img src="https://github.com/user-attachments/assets/f51583e4-9f90-4170-acab-a4473503fdf3" width="350">
+The script automatically executes the following loop for each iteration:
+1. **`seq_gen.py`**: Generates sequence completions from the active model checkpoint.
+2. **`dataset_gen.py`**: Gathers generated sequences and prepares them for training.
+3. **`train.py`**: Runs an offline RL update (e.g., GRPO) on the compiled dataset.
+4. **`plot.py`**: Visualizes metrics such as sequence length across iterations.
 
-</div>
+For debugging or local testing without a large GPU, you can run:
+```bash
+bash ProtRL.sh --model_dir test
+```
+This automatically generates a tiny model locally and runs the online loop.
 
+---
 
-### Carbonic Anhydrase Fold in ZymCTRL
-We also provide a more complex example in ```example/ZymCTRL-fold```, where the fold of carbonic anhydrase is progressively adapted over RL iterations. In this case esm-fold is required and a GPU of 80GB. 
+## 4. Output Results Directory Structure
 
-### Experiments
+Running the online loop creates a results directory `results/YYYYMMDD_HHMMSS/` (or a custom folder specified via `--output_dir`). The contents are organized as follows:
 
-To reproduce the experiments of our paper, you can find all the scripts in the `experiments` folder. Given the size and computational needs of pLMs, each one of the experiments were executed in one H100 GPU, with differing times of execution. All the parameters and external data used in the experiments can be found in this repo. The `.sh` scripts can be executed from the same folder to conduct each experiment, they have been built to work on a SLURM based cluster, given the need of GPU-intensive computing. To reproduce the results run: 
+```
+results_directory/
+├── logs.csv                         # Central database of all generated sequences over iterations
+├── length_over_iterations.png       # Line plot tracking sequence length over training progress
+├── seq_gen_<label>_iteration1.fasta  # Raw generated sequences from iteration 1
+├── seq_gen_<label>_iteration2.fasta  # Raw generated sequences from iteration 2
+├── output_iteration1/               # Fine-tuned policy model checkpoint after iteration 1
+└── output_iteration2/               # Fine-tuned policy model checkpoint after iteration 2
+```
+
+---
+
+## 5. Offline One-Shot Training
+
+If you already have a pre-existing CSV dataset containing columns `prompt`, `sequence`, and `reward`, you can train the policy model directly:
 
 ```bash
-bash experiment_name.sh
+python train_exp.py --model_dir "AI4PD/ProtGPT3-112M" --csv "my_dataset.csv"
 ```
-or 
-```bash 
-sbatch experiment_name.sh
+
+For ProtGPT3 the `prompt` column must be the direction token (`"1"` forward / `"2"` reverse),
+and `sequence` the raw amino-acid completion — see the ProtGPT3 prompting note in
+[§7 Dataset Format](#7-dataset-format). `example/fake_dataset.csv` is a ready-to-use example.
+
+---
+
+## 6. Trainer API Usage
+
+Initialize the trainers in Python using the standard Hugging Face Trainer interface:
+
+### GRPO
+```python
+from src.ProtRL_Trainer import ProtRLTrainingArgument
+from src.pLM_GRPO import ProtRL_GRPOTrainer
+
+training_args = ProtRLTrainingArgument(output_dir="ProtGPT3-GRPO", logging_steps=10)
+
+trainer = ProtRL_GRPOTrainer(
+    model="AI4PD/ProtGPT3-112M",
+    processing_class=tokenizer,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+)
+trainer.train()
 ```
-Replace `experiment_name` with the desired experiment script path. Each experiment will produce, fold and calculate statistics for each considered feature.
 
-## Notes
-seq_gen.py in the main directory generates a fasta file with this format ```>fasta_name /t perplexity /t intrinsic_reward /n sequence```
+### Weighted DPO
+```python
+from src.pLM_weightedDPO import ProtRL_wDPOTrainer, ProtRL_wDPOTrainingArgument
 
-We discontinue ranked DPO as theoretically it will always be outperformed by weighted DPO
+training_args = ProtRL_wDPOTrainingArgument(
+    output_dir="ProtGPT3-wDPO",
+    logging_steps=10,
+    beta=0.1,
+    IRPO_regularisation=True,
+)
 
-## Troubleshooting
-
-Please take a look at the documentation for more details on how to configure and run your experiments.
-
-Feel free to contribute or raise issues if you encounter any problems! We are working to make it more accessible and detailed
-
-## Work in Progress
-
-[ ] LoRa example
-
-## References
-
-- ESM1v: "Language models enable zero-shot prediction of the effects of mutations on protein function" Joshua Meier, Roshan Rao, Robert Verkuil, Jason Liu, Tom Sercu, Alexander Rives; doi: https://doi.org/10.1101/2021.07.09.450648. Computed using https://github.com/seanrjohnson/protein_gibbs_sampler/
-- ProteinMPNN: "Robust deep learning–based protein sequence design using ProteinMPNN", J. Dauparas et al. Science378,49-56(2022).DOI:10.1126/science.add2187
-- CLEAN: "Enzyme function prediction using contrastive learning". Science379,1358-1363(2023). DOI:10.1126/science.adf2465, GitHub: "https://github.com/tttianhao/CLEAN?tab=readme-ov-file"
-
-## Citation 
-
-If you use ProtRL, please cite our [preprint](https://arxiv.org/abs/2412.12979):
-
+trainer = ProtRL_wDPOTrainer(
+    model="AI4PD/ProtGPT3-112M",
+    processing_class=tokenizer,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+)
+trainer.train()
 ```
+
+### REINFORCE
+```python
+from src.pLM_REINFORCE import ProtRL_REINFORCETrainer, ProtRL_REINFORCETrainingArgument
+
+training_args = ProtRL_REINFORCETrainingArgument(
+    output_dir="ProtGPT3-REINFORCE",
+    logging_steps=10,
+    entropy_bonus=0.0,  # set > 0 to encourage exploration
+)
+
+trainer = ProtRL_REINFORCETrainer(
+    model="AI4PD/ProtGPT3-112M",
+    processing_class=tokenizer,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
+)
+trainer.train()
+```
+
+---
+
+## 7. Dataset Format
+
+The trainers expect Hugging Face `Dataset` inputs containing:
+* `prompt`: The conditioning tag, which varies depending on the model and target task.
+  * E.g. `"1"` for ProtGPT3 — its **direction token** (`"1"` = forward N→C, `"2"` = reverse). ProtGPT3 was trained to condition on this, so it is the correct prompt (not `"M"`).
+  * E.g. `"<EC:1.1.1.1>"` or other specific function tags for guided protein language models (like ZymCTRL).
+* `completion`: The **raw** amino-acid sequence, e.g. `"HGEGTFTSDLSKQME"`.
+* `reward`: A numerical score (higher is better).
+
+Example entry:
+```json
+{"prompt": "1", "completion": "HGEGTFTSDLSKQME", "reward": 1.0}
+```
+
+> ⚠️ **ProtGPT3 prompting — get these two things right or generation degenerates:**
+> 1. **Prompt with the direction token** (`"1"` forward / `"2"` reverse), not `"M"`.
+> 2. **Add a leading BOS token.** For generation load the tokenizer with `add_bos_token=True`
+>    (`AutoTokenizer.from_pretrained(model, add_bos_token=True, add_eos_token=False)`); the RL
+>    trainer adds BOS to the prompt for you. Generating from a BOS-less / direction-token-less
+>    prompt drives the model out-of-distribution and yields repetitive junk like `MMMKKK...GGGG`.
+>
+> ⚠️ **Pass the raw sequence — do not insert spaces between residues.**
+> ProtGPT3 (and the other character-level pLMs used here) tokenize **one token per residue**
+> and have no space token. The trainer tokenizes the `completion` for you, so a space-separated
+> string like `"H G E G T"` would map every space to `[UNK]`, silently breaking the RL signal.
+> When you decode generated sequences the tokenizer *displays* spaces between residues; strip
+> them with `.replace(" ", "")` before storing or reusing them.
+
+---
+
+## Citation
+
+If you use ProtRL in your research, please cite:
+
+```bibtex
 @misc{stocco2024guidinggenerativeproteinlanguage,
       title={Guiding Generative Protein Language Models with Reinforcement Learning}, 
       author={Filippo Stocco and Maria Artigues-Lleixa and Andrea Hunklinger and Talal Widatalla and Marc Guell and Noelia Ferruz},
@@ -209,7 +213,3 @@ If you use ProtRL, please cite our [preprint](https://arxiv.org/abs/2412.12979):
       url={https://arxiv.org/abs/2412.12979}, 
 }
 ```
-
- 
-
-

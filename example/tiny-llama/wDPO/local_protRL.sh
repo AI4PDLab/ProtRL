@@ -1,50 +1,39 @@
 #!/bin/bash -l
+set -e
+set -o pipefail
 
-set -e  # Exit immediately if a command exits with a non-zero status
-set -o pipefail  # Fail if any command in a pipeline fails
+EXAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL_DIR="${EXAMPLE_DIR}/models/base/tiny"
+MAX_ITERATIONS=30
+LABEL="MDEMKAYVAL"
 
-PWD="$(pwd)"
-REF_MODEL="/models/base/tiny"
-TOKENIZER="models/tokenizer/"
-LLAMA_CONFIG="models/size_config/tiny/llama_config.json"
-TOKENIZER_PATH="${PWD%/}/${TOKENIZER}"
-MODEL_DIRECTORY="${PWD%/}/${REF_MODEL#/}"
-CONFIG_PATH="${PWD%/}/${LLAMA_CONFIG#/}"
-MAX_ITERATION_NUM=30
-
-DPO_mode="weighted" # choose between paired, ranked and weighted 
-label="MDEMKAYVAL"
-
-
-
-echo "Create LLaMA3 config file and tokenizer if not there"
-
-if [ -d "$TOKENIZER_PATH" ]; then
-    echo "Tokenizer already created"
-else
-    echo "Creating tokenizer"
-    python build_llama_tokenizer.py
+# One-time setup: build amino-acid tokenizer and tiny LLaMA config
+if [ ! -d "${EXAMPLE_DIR}/models/tokenizer" ]; then
+    echo "Building tokenizer..."
+    python3 "${EXAMPLE_DIR}/build_llama_tokenizer.py"
+fi
+if [ ! -f "${EXAMPLE_DIR}/models/size_config/tiny/llama_config.json" ]; then
+    echo "Creating LLaMA config..."
+    python3 "${EXAMPLE_DIR}/create_llama_config.py" -s tiny -p 1024
 fi
 
-if [ -f "$CONFIG_PATH" ]; then
-    echo "LLaMA config already created"
-else
-    echo "Creating LLaMA config"
-    python create_llama_config.py -s 'tiny' -p 1024
-fi
+echo "Starting RL loop for label: ${LABEL}"
 
-echo "RL for the enzyme class $label"
+for i in $(seq 0 $MAX_ITERATIONS); do
+    echo "=== Iteration ${i} ==="
 
-for i in $(seq 0 $MAX_ITERATION_NUM); do
-    echo "Starting iteration $i"
-
-    if [ $i != 0 ]; then
-        echo "Train started"
-        python train.py --iteration_num $i --label $label --mode $DPO_mode --model_dir $MODEL_DIRECTORY --max_iteration_num $MAX_ITERATION_NUM
+    # Train on sequences from the previous iteration (skip at iteration 0)
+    if [ $i -gt 0 ]; then
+        python3 "${EXAMPLE_DIR}/train.py" \
+            --iteration_num $i \
+            --label        $LABEL \
+            --model_dir    $MODEL_DIR
     fi
 
-    echo "Sequence generation started"
-    python seq_gen.py --iteration_num $i --label $label
+    # Generate sequences with the current model (also creates base model at iteration 0)
+    python3 "${EXAMPLE_DIR}/seq_gen.py" \
+        --iteration_num $i \
+        --label         $LABEL
 
-    python plot_len_stats.py
+    python3 "${EXAMPLE_DIR}/plot_len_stats.py"
 done
